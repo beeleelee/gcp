@@ -1,10 +1,10 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/beeleelee/gcp/blockio"
 	"github.com/urfave/cli/v2"
@@ -21,8 +21,17 @@ var cpCmd = &cli.Command{
 			Usage: "",
 			Value: "localhost:1717",
 		},
+		&cli.Int64Flag{
+			Name:  "chunk",
+			Value: 32768,
+		},
+		&cli.IntFlag{
+			Name:  "batch",
+			Value: 1,
+		},
 	},
 	Action: func(c *cli.Context) (err error) {
+		ctx := c.Context
 		hostAddr := c.String("host")
 		args := c.Args().Slice()
 		src := args[0]
@@ -32,37 +41,87 @@ var cpCmd = &cli.Command{
 		if src == "" || target == "" {
 			return errors.New("[usage] blockio src target")
 		}
-		// // open the src
-		// sfd, err := os.Open(src)
-		// if err != nil {
-		// 	return
-		// }
-		// defer sfd.Close()
+		// open the src
+		sfd, err := os.Open(src)
+		if err != nil {
+			return
+		}
+		defer sfd.Close()
+		// read file meta data
+		sfinfo, err := sfd.Stat()
+		if err != nil {
+			return
+		}
 		conn, err := grpc.NewClient(hostAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
 			return
 		}
 		defer conn.Close()
 		cc := blockio.NewCopierClient(conn)
-
-		_, err = cc.Create(context.Background(), &blockio.CreateReq{
+		// touch target file
+		_, err = cc.Create(ctx, &blockio.CreateReq{
 			Path: target,
 		})
 		if err != nil {
 			return
 		}
-		data, err := os.ReadFile(src)
-		if err != nil {
-			return
+		var wg sync.WaitGroup
+		var chunkSize, offset int64
+		chunkSize = c.Int64("chunk")
+		remainSize := sfinfo.Size()
+		concurrentCtl := make(chan struct{}, c.Int("batch"))
+		errChan := make(chan error, 0)
+
+		for remainSize > 0 {
+			select {
+			case err = <-errChan:
+				break
+			default:
+			}
+			chus := chunkSize
+			if remainSize < chus {
+				chus = remainSize
+			}
+			wg.Add(1)
+			go func(off int64, size int64) {
+				defer wg.Done()
+				concurrentCtl <- struct{}{}
+				defer func() {
+					<-concurrentCtl
+				}()
+				buf := make([]byte, size)
+				_, err := sfd.ReadAt(buf, off)
+				if err != nil {
+					errChan <- err
+					return
+				}
+				_, err = cc.Write(ctx, &blockio.WriteReq{
+					Path:   target,
+					Offset: off,
+					Data:   buf,
+				})
+				if err != nil {
+					errChan <- err
+					return
+				}
+
+			}(offset, chus)
+			offset += chus
+			remainSize -= chus
 		}
-		_, err = cc.Write(context.Background(), &blockio.WriteReq{
-			Path:   target,
-			Offset: 0,
-			Data:   data,
-		})
-		if err != nil {
-			return
-		}
-		return nil
+		wg.Wait()
+		// data, err := os.ReadFile(src)
+		// if err != nil {
+		// 	return
+		// }
+		// _, err = cc.Write(context.Background(), &blockio.WriteReq{
+		// 	Path:   target,
+		// 	Offset: 0,
+		// 	Data:   data,
+		// })
+		// if err != nil {
+		// 	return
+		// }
+		return err
 	},
 }

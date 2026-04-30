@@ -1,7 +1,10 @@
-.PHONY: proto blockio
+.PHONY: proto blockio blockio_osx
 
 proto:
 	protoc --go_out=. --go_opt=paths=source_relative     --go-grpc_out=. --go-grpc_opt=paths=source_relative     blockio/gcp.proto
 
 blockio:
 	go build -o ./bin/blockio ./cmd/blockio
+
+blockio_osx:
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o ./bin/blockio_osx ./cmd/blockio

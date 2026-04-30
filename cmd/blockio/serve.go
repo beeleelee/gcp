@@ -44,13 +44,18 @@ func (c *copierServer) Create(ctx context.Context, req *blockio.CreateReq) (*blo
 
 func (c *copierServer) Write(ctx context.Context, req *blockio.WriteReq) (*blockio.WriteRes, error) {
 	tpath := req.Path
-	err := os.WriteFile(tpath, req.Data, 0644)
+	fd, err := os.OpenFile(tpath, os.O_RDWR, 0644)
+	if err != nil {
+		return nil, err
+	}
+	defer fd.Close()
+	n, err := fd.WriteAt(req.Data, req.Offset)
 	if err != nil {
 		return nil, err
 	}
 	return &blockio.WriteRes{
 		Success: true,
-		N:       int32(len(req.Data)),
+		N:       int32(n),
 	}, nil
 }
 
