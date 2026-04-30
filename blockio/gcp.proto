@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package blockio;
+
+option go_package = "./blockio";
+
+message CreateReq {
+    string path = 1;
+}
+message CreateRes {
+    bool success = 1;
+}
+service Copier {
+    rpc Create(CreateReq) returns (CreateRes);
+}
