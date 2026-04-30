@@ -10,6 +10,16 @@ message CreateReq {
 message CreateRes {
     bool success = 1;
 }
+message WriteReq {
+    string path = 1;
+    int64 offset = 2;
+    bytes data = 3;
+}
+message WriteRes {
+    bool success = 1;
+    int32 n = 2;
+}
 service Copier {
     rpc Create(CreateReq) returns (CreateRes);
+    rpc Write(WriteReq) returns (WriteRes);
 }

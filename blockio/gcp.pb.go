@@ -109,6 +109,118 @@ func (x *CreateRes) GetSuccess() bool {
 	return false
 }
 
+type WriteReq struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	Offset        int64                  `protobuf:"varint,2,opt,name=offset,proto3" json:"offset,omitempty"`
+	Data          []byte                 `protobuf:"bytes,3,opt,name=data,proto3" json:"data,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WriteReq) Reset() {
+	*x = WriteReq{}
+	mi := &file_blockio_gcp_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WriteReq) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WriteReq) ProtoMessage() {}
+
+func (x *WriteReq) ProtoReflect() protoreflect.Message {
+	mi := &file_blockio_gcp_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WriteReq.ProtoReflect.Descriptor instead.
+func (*WriteReq) Descriptor() ([]byte, []int) {
+	return file_blockio_gcp_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *WriteReq) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *WriteReq) GetOffset() int64 {
+	if x != nil {
+		return x.Offset
+	}
+	return 0
+}
+
+func (x *WriteReq) GetData() []byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+type WriteRes struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	N             int32                  `protobuf:"varint,2,opt,name=n,proto3" json:"n,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WriteRes) Reset() {
+	*x = WriteRes{}
+	mi := &file_blockio_gcp_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WriteRes) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WriteRes) ProtoMessage() {}
+
+func (x *WriteRes) ProtoReflect() protoreflect.Message {
+	mi := &file_blockio_gcp_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WriteRes.ProtoReflect.Descriptor instead.
+func (*WriteRes) Descriptor() ([]byte, []int) {
+	return file_blockio_gcp_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *WriteRes) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *WriteRes) GetN() int32 {
+	if x != nil {
+		return x.N
+	}
+	return 0
+}
+
 var File_blockio_gcp_proto protoreflect.FileDescriptor
 
 const file_blockio_gcp_proto_rawDesc = "" +
@@ -117,9 +229,17 @@ const file_blockio_gcp_proto_rawDesc = "" +
 	"\tCreateReq\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\"%\n" +
 	"\tCreateRes\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess2:\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\"J\n" +
+	"\bWriteReq\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x16\n" +
+	"\x06offset\x18\x02 \x01(\x03R\x06offset\x12\x12\n" +
+	"\x04data\x18\x03 \x01(\fR\x04data\"2\n" +
+	"\bWriteRes\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\f\n" +
+	"\x01n\x18\x02 \x01(\x05R\x01n2i\n" +
 	"\x06Copier\x120\n" +
-	"\x06Create\x12\x12.blockio.CreateReq\x1a\x12.blockio.CreateResB\vZ\t./blockiob\x06proto3"
+	"\x06Create\x12\x12.blockio.CreateReq\x1a\x12.blockio.CreateRes\x12-\n" +
+	"\x05Write\x12\x11.blockio.WriteReq\x1a\x11.blockio.WriteResB\vZ\t./blockiob\x06proto3"
 
 var (
 	file_blockio_gcp_proto_rawDescOnce sync.Once
@@ -133,16 +253,20 @@ func file_blockio_gcp_proto_rawDescGZIP() []byte {
 	return file_blockio_gcp_proto_rawDescData
 }
 
-var file_blockio_gcp_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_blockio_gcp_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_blockio_gcp_proto_goTypes = []any{
 	(*CreateReq)(nil), // 0: blockio.CreateReq
 	(*CreateRes)(nil), // 1: blockio.CreateRes
+	(*WriteReq)(nil),  // 2: blockio.WriteReq
+	(*WriteRes)(nil),  // 3: blockio.WriteRes
 }
 var file_blockio_gcp_proto_depIdxs = []int32{
 	0, // 0: blockio.Copier.Create:input_type -> blockio.CreateReq
-	1, // 1: blockio.Copier.Create:output_type -> blockio.CreateRes
-	1, // [1:2] is the sub-list for method output_type
-	0, // [0:1] is the sub-list for method input_type
+	2, // 1: blockio.Copier.Write:input_type -> blockio.WriteReq
+	1, // 2: blockio.Copier.Create:output_type -> blockio.CreateRes
+	3, // 3: blockio.Copier.Write:output_type -> blockio.WriteRes
+	2, // [2:4] is the sub-list for method output_type
+	0, // [0:2] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -159,7 +283,7 @@ func file_blockio_gcp_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_blockio_gcp_proto_rawDesc), len(file_blockio_gcp_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

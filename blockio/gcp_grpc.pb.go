@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	Copier_Create_FullMethodName = "/blockio.Copier/Create"
+	Copier_Write_FullMethodName  = "/blockio.Copier/Write"
 )
 
 // CopierClient is the client API for Copier service.
@@ -27,6 +28,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type CopierClient interface {
 	Create(ctx context.Context, in *CreateReq, opts ...grpc.CallOption) (*CreateRes, error)
+	Write(ctx context.Context, in *WriteReq, opts ...grpc.CallOption) (*WriteRes, error)
 }
 
 type copierClient struct {
@@ -47,11 +49,22 @@ func (c *copierClient) Create(ctx context.Context, in *CreateReq, opts ...grpc.C
 	return out, nil
 }
 
+func (c *copierClient) Write(ctx context.Context, in *WriteReq, opts ...grpc.CallOption) (*WriteRes, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WriteRes)
+	err := c.cc.Invoke(ctx, Copier_Write_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CopierServer is the server API for Copier service.
 // All implementations must embed UnimplementedCopierServer
 // for forward compatibility.
 type CopierServer interface {
 	Create(context.Context, *CreateReq) (*CreateRes, error)
+	Write(context.Context, *WriteReq) (*WriteRes, error)
 	mustEmbedUnimplementedCopierServer()
 }
 
@@ -64,6 +77,9 @@ type UnimplementedCopierServer struct{}
 
 func (UnimplementedCopierServer) Create(context.Context, *CreateReq) (*CreateRes, error) {
 	return nil, status.Error(codes.Unimplemented, "method Create not implemented")
+}
+func (UnimplementedCopierServer) Write(context.Context, *WriteReq) (*WriteRes, error) {
+	return nil, status.Error(codes.Unimplemented, "method Write not implemented")
 }
 func (UnimplementedCopierServer) mustEmbedUnimplementedCopierServer() {}
 func (UnimplementedCopierServer) testEmbeddedByValue()                {}
@@ -104,6 +120,24 @@ func _Copier_Create_Handler(srv interface{}, ctx context.Context, dec func(inter
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Copier_Write_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WriteReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CopierServer).Write(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Copier_Write_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CopierServer).Write(ctx, req.(*WriteReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Copier_ServiceDesc is the grpc.ServiceDesc for Copier service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -114,6 +148,10 @@ var Copier_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Create",
 			Handler:    _Copier_Create_Handler,
+		},
+		{
+			MethodName: "Write",
+			Handler:    _Copier_Write_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
