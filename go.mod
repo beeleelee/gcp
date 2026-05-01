@@ -1,6 +1,6 @@
 module github.com/beeleelee/gcp
 
-go 1.26.2
+go 1.24.13
 
 require (
 	github.com/urfave/cli/v2 v2.27.7
