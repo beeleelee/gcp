@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/beeleelee/gcp/blockio"
 	"github.com/dustin/go-humanize"
@@ -74,18 +75,23 @@ var cpCmd = &cli.Command{
 		concurrentCtl := make(chan struct{}, batch)
 		errChan := make(chan error, 0)
 		progressChan := make(chan int64, batch+1)
+		startTime := time.Now()
 
 		// print progress
 		go func() {
 			total := sfinfo.Size()
 			var sent int64
+			ticker := time.Tick(time.Millisecond * 200)
+			var timeSpan float64
 			for {
 				select {
 				case <-ctx.Done():
 					return
+				case cur := <-ticker:
+					timeSpan = cur.Sub(startTime).Seconds()
 				case size := <-progressChan:
 					sent += size
-					fmt.Printf("\rTotal: %s Sent: %s  Completed: %.0f%%", humanize.IBytes(uint64(total)), humanize.IBytes(uint64(sent)), float64(sent*100)/float64(total))
+					fmt.Printf("\rTotal: %s Sent: %s  Completed: %.0f%% elapsed: %.2fs", humanize.IBytes(uint64(total)), humanize.IBytes(uint64(sent)), float64(sent*100)/float64(total), timeSpan)
 					if sent == total {
 						return
 					}
