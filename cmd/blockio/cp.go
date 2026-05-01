@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/beeleelee/gcp/blockio"
+	"github.com/dustin/go-humanize"
 	"github.com/urfave/cli/v2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -69,8 +70,28 @@ var cpCmd = &cli.Command{
 		var chunkSize, offset int64
 		chunkSize = c.Int64("chunk")
 		remainSize := sfinfo.Size()
-		concurrentCtl := make(chan struct{}, c.Int("batch"))
+		batch := c.Int("batch")
+		concurrentCtl := make(chan struct{}, batch)
 		errChan := make(chan error, 0)
+		progressChan := make(chan int64, batch+1)
+
+		// print progress
+		go func() {
+			total := sfinfo.Size()
+			var sent int64
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case size := <-progressChan:
+					sent += size
+					fmt.Printf("\rTotal: %s Sent: %s  Completed: %.0f%%", humanize.IBytes(uint64(total)), humanize.IBytes(uint64(sent)), float64(sent*100)/float64(total))
+					if sent == total {
+						return
+					}
+				}
+			}
+		}()
 
 		for remainSize > 0 {
 			select {
@@ -104,24 +125,14 @@ var cpCmd = &cli.Command{
 					errChan <- err
 					return
 				}
+				progressChan <- size
 
 			}(offset, chus)
 			offset += chus
 			remainSize -= chus
 		}
 		wg.Wait()
-		// data, err := os.ReadFile(src)
-		// if err != nil {
-		// 	return
-		// }
-		// _, err = cc.Write(context.Background(), &blockio.WriteReq{
-		// 	Path:   target,
-		// 	Offset: 0,
-		// 	Data:   data,
-		// })
-		// if err != nil {
-		// 	return
-		// }
+
 		return err
 	},
 }
