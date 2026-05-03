@@ -24,6 +24,7 @@ const (
 type CreateReq struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	Mode          uint32                 `protobuf:"varint,2,opt,name=mode,proto3" json:"mode,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -63,6 +64,13 @@ func (x *CreateReq) GetPath() string {
 		return x.Path
 	}
 	return ""
+}
+
+func (x *CreateReq) GetMode() uint32 {
+	if x != nil {
+		return x.Mode
+	}
+	return 0
 }
 
 type CreateRes struct {
@@ -225,9 +233,10 @@ var File_blockio_gcp_proto protoreflect.FileDescriptor
 
 const file_blockio_gcp_proto_rawDesc = "" +
 	"\n" +
-	"\x11blockio/gcp.proto\x12\ablockio\"\x1f\n" +
+	"\x11blockio/gcp.proto\x12\ablockio\"3\n" +
 	"\tCreateReq\x12\x12\n" +
-	"\x04path\x18\x01 \x01(\tR\x04path\"%\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x12\n" +
+	"\x04mode\x18\x02 \x01(\rR\x04mode\"%\n" +
 	"\tCreateRes\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\"J\n" +
 	"\bWriteReq\x12\x12\n" +

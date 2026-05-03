@@ -6,6 +6,7 @@ option go_package = "./blockio";
 
 message CreateReq {
     string path = 1;
+    uint32 mode = 2;
 }
 message CreateRes {
     bool success = 1;

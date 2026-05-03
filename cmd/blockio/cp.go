@@ -63,6 +63,7 @@ var cpCmd = &cli.Command{
 		// touch target file
 		_, err = cc.Create(ctx, &blockio.CreateReq{
 			Path: target,
+			Mode: uint32(sfinfo.Mode()),
 		})
 		if err != nil {
 			return

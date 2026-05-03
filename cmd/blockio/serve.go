@@ -29,7 +29,7 @@ func (c *copierServer) Create(ctx context.Context, req *blockio.CreateReq) (*blo
 
 	if err != nil && errors.Is(err, os.ErrNotExist) {
 		// failed: cannot create a file by req.Path
-		if fd, err := os.Create(req.Path); err != nil {
+		if fd, err := os.OpenFile(req.Path, os.O_CREATE|os.O_RDONLY, os.FileMode(req.Mode)); err != nil {
 			return nil, err
 		} else {
 			defer fd.Close()
