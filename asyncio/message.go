@@ -3,6 +3,7 @@ package asyncio
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/panjf2000/gnet/v2"
@@ -44,7 +45,6 @@ type WriteReq struct {
 	ID     int64
 	Path   string
 	Offset int64
-	Data   []byte
 }
 
 type WriteRes struct {
@@ -95,6 +95,22 @@ func ReadMessage(conn gnet.Conn) (MSG, []byte, error) {
 	playload := make([]byte, payloadSize)
 	copy(playload, buf[HeadSize+msgSize:])
 	return msg, playload, nil
+}
+
+func WriteMessage(conn gnet.Conn, msg MSG, payload []byte) error {
+	head := make([]byte, HeadSize)
+	head[0] = MagicA
+	head[1] = MagicB
+	head[2] = byte(msg.Type())
+	msgbs := msg.Encode()
+	binary.BigEndian.PutUint32(head[3:3+MessageSize], uint32(len(msgbs)))
+	binary.BigEndian.PutUint32(head[3+MessageSize:], uint32(len(payload)))
+	return conn.AsyncWritev([][]byte{head, msgbs, payload}, func(c gnet.Conn, err error) error {
+		if err != nil {
+			fmt.Println(err)
+		}
+		return nil
+	})
 }
 
 func switchError(err error) error {
