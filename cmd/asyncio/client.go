@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+	"sync/atomic"
 
 	"github.com/beeleelee/gcp/asyncio"
 )
@@ -12,7 +13,7 @@ import (
 type copierClient struct {
 	ctx    context.Context
 	target string
-	idChan chan int64
+	id     int64
 	batch  int
 }
 
@@ -95,15 +96,6 @@ func (cc *copierClient) handleReceive(conn net.Conn) {
 	}
 }
 
-func (cc *copierClient) genMsgID() {
-	var id int64
-	for {
-		select {
-		case <-cc.ctx.Done():
-			return
-		default:
-			id++
-			cc.idChan <- id
-		}
-	}
+func (cc *copierClient) genMsgID() int64 {
+	return atomic.AddInt64(&cc.id, 1)
 }
