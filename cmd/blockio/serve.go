@@ -33,6 +33,9 @@ func (c *copierServer) Create(ctx context.Context, req *blockio.CreateReq) (*blo
 			return nil, err
 		} else {
 			defer fd.Close()
+			if req.Size > 0 {
+				fd.Truncate(int64(req.Size))
+			}
 		}
 	}
 

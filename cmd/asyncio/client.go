@@ -88,10 +88,12 @@ func (cc *copierClient) handleReceive(conn net.Conn) {
 					return
 				}
 				readSize += n
+			} else {
+				// a full packet has been read
 			}
-			if readSize == asyncio.HeadSize+len(bufMsg)+len(payload) {
+			// if readSize == asyncio.HeadSize+len(bufMsg)+len(payload) {
 
-			}
+			// }
 		}
 	}
 }
