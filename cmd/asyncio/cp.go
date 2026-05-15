@@ -7,11 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/beeleelee/gcp/blockio"
 	"github.com/dustin/go-humanize"
 	"github.com/urfave/cli/v2"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 var cpCmd = &cli.Command{
@@ -29,7 +26,7 @@ var cpCmd = &cli.Command{
 		},
 		&cli.IntFlag{
 			Name:  "batch",
-			Value: 1,
+			Value: 2,
 		},
 	},
 	Action: func(c *cli.Context) (err error) {
@@ -41,7 +38,7 @@ var cpCmd = &cli.Command{
 		fmt.Println(hostAddr)
 		fmt.Println(src, target)
 		if src == "" || target == "" {
-			return errors.New("[usage] blockio src target")
+			return errors.New("[usage] asyincio src target")
 		}
 		// open the src
 		sfd, err := os.Open(src)
@@ -54,17 +51,11 @@ var cpCmd = &cli.Command{
 		if err != nil {
 			return
 		}
-		conn, err := grpc.NewClient(hostAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		cc := blockio.NewCopierClient(conn)
+		batch := c.Int("batch")
+		cc := newClient(ctx, target, batch)
+
 		// touch target file
-		_, err = cc.Create(ctx, &blockio.CreateReq{
-			Path: target,
-			Mode: uint32(sfinfo.Mode()),
-		})
+		_, err = cc.Create(target, sfinfo.Size(), sfinfo.Mode())
 		if err != nil {
 			return
 		}
@@ -72,7 +63,7 @@ var cpCmd = &cli.Command{
 		var chunkSize, offset int64
 		chunkSize = c.Int64("chunk")
 		remainSize := sfinfo.Size()
-		batch := c.Int("batch")
+
 		concurrentCtl := make(chan struct{}, batch)
 		errChan := make(chan error, 0)
 		progressChan := make(chan int64, batch+1)
@@ -123,11 +114,7 @@ var cpCmd = &cli.Command{
 					errChan <- err
 					return
 				}
-				_, err = cc.Write(ctx, &blockio.WriteReq{
-					Path:   target,
-					Offset: off,
-					Data:   buf,
-				})
+				_, err = cc.Write(target, off, buf)
 				if err != nil {
 					errChan <- err
 					return

@@ -11,6 +11,10 @@ func (m *CreateReq) Type() MessageType {
 	return CreateReqT
 }
 
+func (m *CreateReq) GetID() int64 {
+	return m.ID
+}
+
 func (m *CreateReq) Encode() []byte {
 	bs, _ := cbor.Marshal(m)
 	return bs
@@ -22,6 +26,10 @@ func (m *CreateReq) Decode(buf []byte) error {
 
 func (m *CreateRes) Type() MessageType {
 	return CreateResT
+}
+
+func (m *CreateRes) GetID() int64 {
+	return m.ID
 }
 
 func (m *CreateRes) Encode() []byte {
@@ -37,6 +45,10 @@ func (m *WriteReq) Type() MessageType {
 	return WriteReqT
 }
 
+func (m *WriteReq) GetID() int64 {
+	return m.ID
+}
+
 func (m *WriteReq) Encode() []byte {
 	bs, _ := cbor.Marshal(m)
 	return bs
@@ -48,6 +60,10 @@ func (m *WriteReq) Decode(buf []byte) error {
 
 func (m *WriteRes) Type() MessageType {
 	return WriteResT
+}
+
+func (m *WriteRes) GetID() int64 {
+	return m.ID
 }
 
 func (m *WriteRes) Encode() []byte {
