@@ -54,38 +54,27 @@ type WriteRes struct {
 	N       int32
 }
 
-var ErrIncompletePacket = errors.New("incomplete packet")
-var ErrBadProtocol = errors.New("bad protocol")
-var ErrMsgType = errors.New("unrecognized message type")
+var (
+	ErrIncompletePacket = errors.New("incomplete packet")
+	ErrBadProtocol      = errors.New("bad protocol")
+	ErrMsgType          = errors.New("unrecognized message type")
+	ErrHeadSize         = errors.New("short head size")
+)
 
 func ReadMessage(conn gnet.Conn) (MSG, []byte, error) {
 	buf, err := conn.Peek(2)
 	if err != nil {
 		return nil, nil, switchError(err)
 	}
-	if buf[0] != MagicA || buf[1] != MagicB {
+	if !MagicNumberCheck(buf[0], buf[1]) {
 		return nil, nil, ErrBadProtocol
 	}
 	buf, err = conn.Peek(HeadSize)
 	if err != nil {
 		return nil, nil, switchError(err)
 	}
-	msgt := MessageType(buf[2])
-	var msg MSG
-	switch msgt {
-	case CreateReqT:
-		msg = &CreateReq{}
-	case CreateResT:
-		msg = &CreateRes{}
-	case WriteReqT:
-		msg = &WriteReq{}
-	case WriteResT:
-		msg = &WriteRes{}
-	default:
-		return nil, nil, ErrMsgType
-	}
-	msgSize := binary.BigEndian.Uint32(buf[3 : 3+MessageSize])
-	payloadSize := binary.BigEndian.Uint32(buf[3+MessageSize:])
+	msg, msgSize, payloadSize, err := DecodePre(buf)
+
 	buf, err = conn.Peek(HeadSize + int(msgSize+payloadSize))
 	if err != nil {
 		return nil, nil, switchError(err)
@@ -100,13 +89,7 @@ func ReadMessage(conn gnet.Conn) (MSG, []byte, error) {
 }
 
 func WriteMessage(conn gnet.Conn, msg MSG, payload []byte) error {
-	head := make([]byte, HeadSize)
-	head[0] = MagicA
-	head[1] = MagicB
-	head[2] = byte(msg.Type())
-	msgbs := msg.Encode()
-	binary.BigEndian.PutUint32(head[3:3+MessageSize], uint32(len(msgbs)))
-	binary.BigEndian.PutUint32(head[3+MessageSize:], uint32(len(payload)))
+	head, msgbs := EncodeMsg(msg, len(payload))
 	return conn.AsyncWritev([][]byte{head, msgbs, payload}, func(c gnet.Conn, err error) error {
 		if err != nil {
 			fmt.Println(err)
@@ -120,4 +103,45 @@ func switchError(err error) error {
 		return ErrIncompletePacket
 	}
 	return err
+}
+
+// MagicNumberCheck
+//
+// Return true if both magic number are match
+func MagicNumberCheck(ma byte, mb byte) bool {
+	return ma == MagicA && mb == MagicB
+}
+
+func EncodeMsg(msg MSG, payloadSize int) (head []byte, msgbuf []byte) {
+	head = make([]byte, HeadSize)
+	head[0] = MagicA
+	head[1] = MagicB
+	head[2] = byte(msg.Type())
+	msgbuf = msg.Encode()
+	binary.BigEndian.PutUint32(head[3:3+MessageSize], uint32(len(msgbuf)))
+	binary.BigEndian.PutUint32(head[3+MessageSize:], uint32(payloadSize))
+	return
+}
+
+func DecodePre(head []byte) (MSG, uint32, uint32, error) {
+	if len(head) < HeadSize {
+		return nil, 0, 0, ErrHeadSize
+	}
+	msgt := MessageType(head[2])
+	var msg MSG
+	switch msgt {
+	case CreateReqT:
+		msg = &CreateReq{}
+	case CreateResT:
+		msg = &CreateRes{}
+	case WriteReqT:
+		msg = &WriteReq{}
+	case WriteResT:
+		msg = &WriteRes{}
+	default:
+		return nil, 0, 0, ErrMsgType
+	}
+	msgSize := binary.BigEndian.Uint32(head[3 : 3+MessageSize])
+	payloadSize := binary.BigEndian.Uint32(head[3+MessageSize:])
+	return msg, msgSize, payloadSize, nil
 }

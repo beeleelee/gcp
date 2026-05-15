@@ -133,7 +133,7 @@ func (cc *copierClient) handleReceive(conn net.Conn) {
 				}
 				readSize += n
 				if readSize > 1 && !magicNumChecked {
-					if bufHead[0] != asyncio.MagicA || bufHead[1] != asyncio.MagicB {
+					if !asyncio.MagicNumberCheck(buf[0], buf[1]) {
 						fmt.Println("bad protocol")
 						return
 					} else {
@@ -163,18 +163,8 @@ func (cc *copierClient) handleReceive(conn net.Conn) {
 				readSize += n
 			} else {
 				// a full packet has been read
-				var msg asyncio.MSG
-				msgt := asyncio.MessageType(bufHead[2])
-				switch msgt {
-				case asyncio.CreateReqT:
-					msg = &asyncio.CreateReq{}
-				case asyncio.CreateResT:
-					msg = &asyncio.CreateRes{}
-				case asyncio.WriteReqT:
-					msg = &asyncio.WriteReq{}
-				case asyncio.WriteResT:
-					msg = &asyncio.WriteRes{}
-				default:
+				msg, _, _, err := asyncio.DecodePre(bufHead)
+				if err != nil {
 					panic(asyncio.ErrMsgType)
 				}
 				if err := msg.Decode(bufMsg); err != nil {
@@ -187,9 +177,6 @@ func (cc *copierClient) handleReceive(conn net.Conn) {
 				}
 				readSize = 0
 			}
-			// if readSize == asyncio.HeadSize+len(bufMsg)+len(payload) {
-
-			// }
 		}
 	}
 }
