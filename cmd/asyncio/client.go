@@ -11,16 +11,27 @@ import (
 	"github.com/beeleelee/gcp/asyncio"
 )
 
+// wrap asyinc message with payload
+// payload contains data bytes or be empty slice
 type clientWrappedMsg struct {
 	msg     asyncio.MSG
 	payload []byte
 }
 
+// wrap response channel with clientWrappedMsg
+// resChan will receive response msg from server
 type clientRequestMsg struct {
 	clientWrappedMsg
 	resChan chan clientWrappedMsg
 }
 
+// copierClinet
+// target - the host address to connect to
+// id - auto increased int64 value for message matching
+// batch - the number of connections going to hold with target host
+// msgIn - channel that is the entry point for outside message
+// sendHandle - channel that receive messages from processMsg() and send to target host
+// receiveHandle - channel that send messages to processMsg() from connections
 type copierClient struct {
 	ctx           context.Context
 	target        string
@@ -45,6 +56,9 @@ func newClient(ctx context.Context, target string, batch int) *copierClient {
 	return cc
 }
 
+// processMsg
+//
+// messages match center - match messages with message id
 func (cc *copierClient) processMsg() {
 	resCache := make(map[int64]chan clientWrappedMsg)
 	for {
@@ -65,6 +79,8 @@ func (cc *copierClient) processMsg() {
 
 }
 
+// request and hold connection with target host
+// set handles for read and write on connections
 func (cc *copierClient) dail() {
 	for i := 0; i < cc.batch; i++ {
 		conn, err := net.Dial("tcp", cc.target)
@@ -76,6 +92,10 @@ func (cc *copierClient) dail() {
 	}
 }
 
+// handleSend
+//
+// encode received messages
+// send out to target host by connection
 func (cc *copierClient) handleSend(conn net.Conn) {
 	for {
 		select {
@@ -111,6 +131,12 @@ func (cc *copierClient) handleSend(conn net.Conn) {
 	}
 }
 
+// handleReceive
+//
+// reading loop on connection
+// keeping read packets from target host
+// decode packets to message
+// transfer message to match center (processMsg())
 func (cc *copierClient) handleReceive(conn net.Conn) {
 	bufHead := make([]byte, asyncio.HeadSize)
 	readSize := 0
@@ -181,10 +207,15 @@ func (cc *copierClient) handleReceive(conn net.Conn) {
 	}
 }
 
+// auto increased int64 value
 func (cc *copierClient) genMsgID() int64 {
 	return atomic.AddInt64(&cc.id, 1)
 }
 
+// Create
+//
+// kind of rpc method
+// create file quest to target host
 func (cc *copierClient) Create(target string, size int64, mode fs.FileMode) (clientWrappedMsg, error) {
 	ch := make(chan clientWrappedMsg)
 	cc.msgIn <- clientRequestMsg{
@@ -201,6 +232,10 @@ func (cc *copierClient) Create(target string, size int64, mode fs.FileMode) (cli
 	return <-ch, nil
 }
 
+// Write
+//
+// kind of rpc method
+// send data piece to target host
 func (cc *copierClient) Write(target string, off int64, payload []byte) (clientWrappedMsg, error) {
 	ch := make(chan clientWrappedMsg)
 	cc.msgIn <- clientRequestMsg{
