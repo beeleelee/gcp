@@ -99,6 +99,9 @@ func (c *copierServer) create(conn gnet.Conn, req *asyncio.CreateReq) {
 			c.createFailed(conn, req)
 			return
 		} else {
+			if req.Size > 0 {
+				fd.Truncate(req.Size)
+			}
 			defer fd.Close()
 		}
 	}

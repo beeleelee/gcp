@@ -32,8 +32,9 @@ const HeadSize = 2 + 1 + MessageSize + PayloadSize
 
 type CreateReq struct {
 	ID   int64
-	Path string
+	Size int64
 	Mode uint32
+	Path string
 }
 
 type CreateRes struct {
