@@ -29,7 +29,7 @@ var cpCmd = &cli.Command{
 		},
 		&cli.IntFlag{
 			Name:  "batch",
-			Value: 1,
+			Value: 16,
 		},
 	},
 	Action: func(c *cli.Context) (err error) {
