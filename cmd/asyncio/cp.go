@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dustin/go-humanize"
+	"github.com/beeleelee/gcp/cmd/progressbar"
 	"github.com/urfave/cli/v2"
 )
 
@@ -67,29 +67,8 @@ var cpCmd = &cli.Command{
 		concurrentCtl := make(chan struct{}, batch)
 		errChan := make(chan error, 0)
 		progressChan := make(chan int64, batch+1)
-		startTime := time.Now()
-
 		// print progress
-		go func() {
-			total := sfinfo.Size()
-			var sent int64
-			ticker := time.Tick(time.Millisecond * 200)
-			var timeSpan float64
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case cur := <-ticker:
-					timeSpan = cur.Sub(startTime).Seconds()
-				case size := <-progressChan:
-					sent += size
-					fmt.Printf("\rTotal: %s Sent: %s  Completed: %.0f%% elapsed: %.2fs", humanize.IBytes(uint64(total)), humanize.IBytes(uint64(sent)), float64(sent*100)/float64(total), timeSpan)
-					if sent == total {
-						return
-					}
-				}
-			}
-		}()
+		go progressbar.Progress(ctx, sfinfo.Size(), progressChan, time.Now(), time.Millisecond*200)
 
 		for remainSize > 0 {
 			select {
