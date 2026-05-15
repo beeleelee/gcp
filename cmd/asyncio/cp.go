@@ -26,7 +26,7 @@ var cpCmd = &cli.Command{
 		},
 		&cli.IntFlag{
 			Name:  "batch",
-			Value: 2,
+			Value: 4,
 		},
 	},
 	Action: func(c *cli.Context) (err error) {
@@ -52,7 +52,7 @@ var cpCmd = &cli.Command{
 			return
 		}
 		batch := c.Int("batch")
-		cc := newClient(ctx, target, batch)
+		cc := newClient(ctx, hostAddr, batch)
 
 		// touch target file
 		_, err = cc.Create(target, sfinfo.Size(), sfinfo.Mode())

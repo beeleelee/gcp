@@ -49,6 +49,7 @@ func (c *copierServer) OnTraffic(conn gnet.Conn) gnet.Action {
 
 func (c *copierServer) process() {
 	for i := 0; i < c.processNum; i++ {
+		fmt.Printf("set process %d\n", i)
 		go func(ctx context.Context) {
 
 			for {
@@ -170,6 +171,7 @@ func newServer(ctx context.Context, processNum int) *copierServer {
 	cs := &copierServer{
 		processMsgChan: make(chan *wrappedMsg, processNum),
 		ctx:            ctx,
+		processNum:     processNum,
 	}
 	cs.process()
 	return cs
@@ -182,13 +184,13 @@ var serveCmd = &cli.Command{
 		&cli.StringFlag{
 			Name:  "listen",
 			Usage: "",
-			Value: "tcp//0.0.0.0:1717",
+			Value: "tcp://0.0.0.0:1717",
 		},
 	},
 	Action: func(c *cli.Context) (err error) {
 		listenAddr := c.String("listen")
 		fmt.Println("listen to ", listenAddr)
 		multicore := true
-		return gnet.Run(newServer(c.Context, 16), listenAddr, gnet.WithMulticore(multicore))
+		return gnet.Run(newServer(c.Context, 4), listenAddr, gnet.WithMulticore(multicore))
 	},
 }

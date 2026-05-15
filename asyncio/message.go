@@ -95,6 +95,7 @@ func ReadMessage(conn gnet.Conn) (MSG, []byte, error) {
 	}
 	playload := make([]byte, payloadSize)
 	copy(playload, buf[HeadSize+msgSize:])
+	conn.Discard(len(buf))
 	return msg, playload, nil
 }
 
