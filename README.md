@@ -1,2 +1,2 @@
 # gcp
-Copy files between hosts. Using Gnet as network framework.
+Copy files between local and host. 
