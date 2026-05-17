@@ -6,6 +6,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fxamacker/cbor/v2 v2.9.2
 	github.com/panjf2000/gnet/v2 v2.9.7
+	github.com/rs/zerolog v1.35.1
 	github.com/urfave/cli/v2 v2.27.7
 	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11
@@ -13,6 +14,8 @@ require (
 
 require (
 	github.com/cpuguy83/go-md2man/v2 v2.0.7 // indirect
+	github.com/mattn/go-colorable v0.1.14 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/panjf2000/ants/v2 v2.11.3 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect

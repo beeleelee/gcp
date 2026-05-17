@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 
 	"github.com/beeleelee/gcp/asyncio"
+	"github.com/beeleelee/gcp/logger"
 	"github.com/panjf2000/gnet/v2"
 	"github.com/urfave/cli/v2"
 )
@@ -49,9 +49,7 @@ func (c *copierServer) OnTraffic(conn gnet.Conn) gnet.Action {
 
 func (c *copierServer) process() {
 	for i := 0; i < c.processNum; i++ {
-		fmt.Printf("set process %d\n", i)
 		go func(ctx context.Context) {
-
 			for {
 				select {
 				case <-ctx.Done():
@@ -70,7 +68,7 @@ func (c *copierServer) process() {
 					case asyncio.WriteResT:
 						// for now, do nothing
 					default:
-						fmt.Println("should not be here, unrecognized message type")
+						logger.Log.Error("should not be here, unrecognized message type", "wmsg", wmsg)
 					}
 				}
 			}
@@ -82,13 +80,13 @@ func (c *copierServer) create(conn gnet.Conn, req *asyncio.CreateReq) {
 	info, err := os.Stat(req.Path)
 	// failed: path exist but not a file
 	if err == nil && info.IsDir() {
-		fmt.Printf("%s is dir\n", req.Path)
+		logger.Log.Debug("create failed as target is dir", "createReq", req)
 		c.createFailed(conn, req)
 		return
 	}
 	// failed: cannot get file info
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		fmt.Println(err)
+		logger.Log.Debug("failed to get file info", "err", err)
 		c.createFailed(conn, req)
 		return
 	}
@@ -96,7 +94,7 @@ func (c *copierServer) create(conn gnet.Conn, req *asyncio.CreateReq) {
 	if err != nil && errors.Is(err, os.ErrNotExist) {
 		// failed: cannot create a file by req.Path
 		if fd, err := os.OpenFile(req.Path, os.O_CREATE|os.O_RDONLY, os.FileMode(req.Mode)); err != nil {
-			fmt.Println(err)
+			logger.Log.Debug("failed to open file", "err", err)
 			c.createFailed(conn, req)
 			return
 		} else {
@@ -106,9 +104,7 @@ func (c *copierServer) create(conn gnet.Conn, req *asyncio.CreateReq) {
 			defer fd.Close()
 		}
 	}
-
 	c.createSuccess(conn, req)
-
 }
 
 func (c *copierServer) createFailed(conn gnet.Conn, req *asyncio.CreateReq) {
@@ -116,7 +112,7 @@ func (c *copierServer) createFailed(conn gnet.Conn, req *asyncio.CreateReq) {
 		ID:      req.ID,
 		Success: false,
 	}, nil); err != nil {
-		fmt.Println(err)
+		logger.Log.Debug("failed to write message", "err", err)
 	}
 }
 
@@ -125,7 +121,7 @@ func (c *copierServer) createSuccess(conn gnet.Conn, req *asyncio.CreateReq) {
 		ID:      req.ID,
 		Success: true,
 	}, nil); err != nil {
-		fmt.Println(err)
+		logger.Log.Debug("failed to write message", "err", err)
 	}
 }
 
@@ -133,14 +129,14 @@ func (c *copierServer) write(conn gnet.Conn, req *asyncio.WriteReq, payload []by
 	tpath := req.Path
 	fd, err := os.OpenFile(tpath, os.O_RDWR, 0644)
 	if err != nil {
-		fmt.Println(err)
+		logger.Log.Debug("failed to open file", "err", err)
 		c.writeFailed(conn, req)
 		return
 	}
 	defer fd.Close()
 	n, err := fd.WriteAt(payload, req.Offset)
 	if err != nil {
-		fmt.Println(err)
+		logger.Log.Debug("failed to write data to file", "err", err)
 		c.writeFailed(conn, req)
 		return
 	}
@@ -153,7 +149,7 @@ func (c *copierServer) writeFailed(conn gnet.Conn, req *asyncio.WriteReq) {
 		ID:      req.ID,
 		Success: false,
 	}, nil); err != nil {
-		fmt.Println(err)
+		logger.Log.Debug("failed to write message", "err", err)
 	}
 }
 
@@ -163,7 +159,7 @@ func (c *copierServer) writeSuccess(conn gnet.Conn, req *asyncio.WriteReq, n int
 		Success: true,
 		N:       int32(n),
 	}, nil); err != nil {
-		fmt.Println(err)
+		logger.Log.Debug("failed to write message", "err", err)
 	}
 }
 
@@ -186,11 +182,23 @@ var serveCmd = &cli.Command{
 			Usage: "",
 			Value: "tcp://0.0.0.0:1717",
 		},
+		&cli.IntFlag{
+			Name:  "process-num",
+			Value: 4,
+		},
+		&cli.BoolFlag{
+			Name:  "multicore",
+			Value: true,
+		},
 	},
 	Action: func(c *cli.Context) (err error) {
 		listenAddr := c.String("listen")
-		fmt.Println("listen to ", listenAddr)
-		multicore := true
-		return gnet.Run(newServer(c.Context, 4), listenAddr, gnet.WithMulticore(multicore))
+		processNum := c.Int("process-num")
+		multicore := c.Bool("multicore")
+		err = gnet.Run(newServer(c.Context, processNum), listenAddr, gnet.WithMulticore(multicore))
+		if err == nil {
+			logger.Log.Info("", "listen", listenAddr, "process", processNum, "multicore", multicore)
+		}
+		return
 	},
 }
