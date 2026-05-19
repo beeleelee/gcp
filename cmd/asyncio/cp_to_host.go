@@ -38,15 +38,16 @@ func cpOneFileToHost(
 	remainSize := sfinfo.Size()
 
 	concurrentCtl := make(chan struct{}, batch)
-	errChan := make(chan error, 0)
+	errChan := make(chan error, batch)
 	progressChan := make(chan int64, batch+1)
 	// print progress
 	go progressbar.Progress(ctx, sfinfo.Size(), progressChan, time.Now(), time.Millisecond*200)
 
+loop:
 	for remainSize > 0 {
 		select {
 		case err = <-errChan:
-			break
+			break loop
 		default:
 		}
 		chus := chunkSize

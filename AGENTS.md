@@ -61,7 +61,7 @@ Log level: `--level` or `-L` flag (`error` default, accepts `info`, `debug`, etc
 - `make gcp` strips debug info (`-ldflags="-s -w"`); use `go build` directly from `cmd/asyncio` for debugging.
 - gRPC `WriteReq.Data` holds the file chunk bytes — large payloads are expected.
 - Asyncio server never closes `CreateRes`/`WriteRes` connections on client response — it keeps the conn open.
-- `blockio/cp.go` does not call `cc.Create()` with `Size` field (unlike `asyncio/cp.go` which passes `sfinfo.Size()`). The `blockio` proto has a `size` field in `CreateReq` but the cp caller omits it — likely a bug or benign because the file gets written by offset.
+
 
 ## Prebuilt binaries
 

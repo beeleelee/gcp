@@ -36,13 +36,13 @@ var cpCmd = &cli.Command{
 		ctx := c.Context
 		hostAddr := c.String("host")
 		args := c.Args().Slice()
+		if len(args) < 2 {
+			return errors.New("usage: blockio cp <src> <target>")
+		}
 		src := args[0]
 		target := args[1]
 		fmt.Println(hostAddr)
 		fmt.Println(src, target)
-		if src == "" || target == "" {
-			return errors.New("[usage] blockio src target")
-		}
 		// open the src
 		sfd, err := os.Open(src)
 		if err != nil {
@@ -64,6 +64,7 @@ var cpCmd = &cli.Command{
 		_, err = cc.Create(ctx, &blockio.CreateReq{
 			Path: target,
 			Mode: uint32(sfinfo.Mode()),
+			Size: uint64(sfinfo.Size()),
 		})
 		if err != nil {
 			return
@@ -74,13 +75,14 @@ var cpCmd = &cli.Command{
 		remainSize := sfinfo.Size()
 		batch := c.Int("batch")
 		concurrentCtl := make(chan struct{}, batch)
-		errChan := make(chan error, 0)
+		errChan := make(chan error, batch)
 		progressChan := make(chan int64, batch+1)
 		go progressbar.Progress(ctx, sfinfo.Size(), progressChan, time.Now(), time.Millisecond*200)
+	loop:
 		for remainSize > 0 {
 			select {
 			case err = <-errChan:
-				break
+				break loop
 			default:
 			}
 			chus := chunkSize

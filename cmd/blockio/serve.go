@@ -20,7 +20,7 @@ func (c *copierServer) Create(ctx context.Context, req *blockio.CreateReq) (*blo
 	info, err := os.Stat(req.Path)
 	// failed: path exist but not a file
 	if err == nil && info.IsDir() {
-		return nil, errors.New(fmt.Sprintf("%s is dir", req.Path))
+		return nil, fmt.Errorf("%s is dir", req.Path)
 	}
 	// failed: cannot get file info
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -28,13 +28,14 @@ func (c *copierServer) Create(ctx context.Context, req *blockio.CreateReq) (*blo
 	}
 
 	if err != nil && errors.Is(err, os.ErrNotExist) {
-		// failed: cannot create a file by req.Path
-		if fd, err := os.OpenFile(req.Path, os.O_CREATE|os.O_RDONLY, os.FileMode(req.Mode)); err != nil {
+		fd, err := os.OpenFile(req.Path, os.O_RDWR|os.O_CREATE, os.FileMode(req.Mode))
+		if err != nil {
 			return nil, err
-		} else {
-			defer fd.Close()
-			if req.Size > 0 {
-				fd.Truncate(int64(req.Size))
+		}
+		defer fd.Close()
+		if req.Size > 0 {
+			if err := fd.Truncate(int64(req.Size)); err != nil {
+				return nil, err
 			}
 		}
 	}

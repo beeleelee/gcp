@@ -29,13 +29,13 @@ var cpCmd = &cli.Command{
 		ctx := c.Context
 		hostAddr := c.String("host")
 		args := c.Args().Slice()
+		if len(args) < 2 {
+			return errors.New("usage: gcp cp <src> <target>")
+		}
 		src := args[0]
 		target := args[1]
 		fmt.Println(hostAddr)
 		fmt.Println(src, target)
-		if src == "" || target == "" {
-			return errors.New("[usage] asyincio src target")
-		}
 		return cpOneFileToHost(ctx, hostAddr, src, target, c.Int64("chunk"), c.Int("batch"))
 	},
 }
