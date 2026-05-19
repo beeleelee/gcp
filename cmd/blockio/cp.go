@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -41,6 +43,11 @@ var cpCmd = &cli.Command{
 		}
 		src := args[0]
 		target := args[1]
+		if target == "" {
+			target = filepath.Base(src)
+		} else if strings.HasSuffix(target, "/") {
+			target = target + filepath.Base(src)
+		}
 		fmt.Println(hostAddr)
 		fmt.Println(src, target)
 		// open the src
