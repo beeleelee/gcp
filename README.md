@@ -58,3 +58,12 @@ If the target ends with `/`, the source filename is appended:
 
 Log level: `--level` or `-L` flag (`error` default, accepts `info`, `debug`, etc.).
 
+## Protocol safety limits
+
+The asyncio protocol reads `msgSize` and `payloadSize` from the wire header. Two limits in `asyncio/message.go` prevent abuse:
+
+- **`MaxMsgSize` = 64 KB** — CBOR-encoded messages are tiny structs (ID, ints, path string). 64 KB is several orders of magnitude above any legitimate message, but far below anything dangerous.
+- **`MaxPayloadSize` = 16 MB** — File chunks default to 32 KB (`--chunk`). 16 MB allows very large chunks while still being small enough that a single allocation won't OOM the process. 64 concurrent 16 MB allocations would be needed to hit 1 GB.
+
+Without these two bounds a malicious or corrupted header could set `msgSize = 0xFFFFFFFF` to cause a slice-bounds panic or `payloadSize = math.MaxUint32` to trigger a 4 GB `make` OOM.
+

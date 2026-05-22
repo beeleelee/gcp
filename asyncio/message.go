@@ -30,6 +30,9 @@ const PayloadSize = 4
 // 4 bytes for payload size
 const HeadSize = 2 + 1 + MessageSize + PayloadSize
 
+const MaxMsgSize = 1 << 16
+const MaxPayloadSize = 1 << 24
+
 type CreateReq struct {
 	ID   int64
 	Size int64
@@ -74,18 +77,21 @@ func ReadMessage(conn gnet.Conn) (MSG, []byte, error) {
 		return nil, nil, switchError(err)
 	}
 	msg, msgSize, payloadSize, err := DecodePre(buf)
-
-	buf, err = conn.Peek(HeadSize + int(msgSize+payloadSize))
+	if err != nil {
+		return nil, nil, err
+	}
+	total := int(msgSize) + int(payloadSize)
+	buf, err = conn.Peek(HeadSize + total)
 	if err != nil {
 		return nil, nil, switchError(err)
 	}
-	if err = msg.Decode(buf[HeadSize : HeadSize+msgSize]); err != nil {
+	if err = msg.Decode(buf[HeadSize : HeadSize+int(msgSize)]); err != nil {
 		return nil, nil, err
 	}
-	playload := make([]byte, payloadSize)
-	copy(playload, buf[HeadSize+msgSize:])
+	payload := make([]byte, payloadSize)
+	copy(payload, buf[HeadSize+int(msgSize):])
 	conn.Discard(len(buf))
-	return msg, playload, nil
+	return msg, payload, nil
 }
 
 func WriteMessage(conn gnet.Conn, msg MSG, payload []byte) error {
@@ -143,5 +149,8 @@ func DecodePre(head []byte) (MSG, uint32, uint32, error) {
 	}
 	msgSize := binary.BigEndian.Uint32(head[3 : 3+MessageSize])
 	payloadSize := binary.BigEndian.Uint32(head[3+MessageSize:])
+	if msgSize > MaxMsgSize || payloadSize > MaxPayloadSize {
+		return nil, 0, 0, ErrBadProtocol
+	}
 	return msg, msgSize, payloadSize, nil
 }
