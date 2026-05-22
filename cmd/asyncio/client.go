@@ -166,14 +166,12 @@ func (cc *copierClient) handleReceive(conn net.Conn) {
 						magicNumChecked = true
 					}
 				}
-			}
-			if readSize == asyncio.HeadSize {
+			} else if readSize == asyncio.HeadSize {
 				msgSize := binary.BigEndian.Uint32(bufHead[3 : 3+asyncio.MessageSize])
 				payloadSize := binary.BigEndian.Uint32(bufHead[3+asyncio.MessageSize:])
 				bufMsg = make([]byte, msgSize)
 				payload = make([]byte, payloadSize)
-			}
-			if readSize < asyncio.HeadSize+len(bufMsg) {
+			} else if readSize < asyncio.HeadSize+len(bufMsg) {
 				n, err := conn.Read(bufMsg[readSize-asyncio.HeadSize:])
 				if err != nil {
 					fmt.Println(err)
