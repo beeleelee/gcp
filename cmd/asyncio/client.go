@@ -201,6 +201,8 @@ func (cc *copierClient) handleReceive(conn net.Conn) {
 					payload: append([]byte{}, payload...),
 				}
 				readSize = 0
+				bufMsg = nil
+				payload = nil
 			}
 		}
 	}
