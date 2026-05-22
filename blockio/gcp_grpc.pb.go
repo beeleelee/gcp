@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	Copier_Create_FullMethodName = "/blockio.Copier/Create"
 	Copier_Write_FullMethodName  = "/blockio.Copier/Write"
+	Copier_Read_FullMethodName   = "/blockio.Copier/Read"
 )
 
 // CopierClient is the client API for Copier service.
@@ -29,6 +30,7 @@ const (
 type CopierClient interface {
 	Create(ctx context.Context, in *CreateReq, opts ...grpc.CallOption) (*CreateRes, error)
 	Write(ctx context.Context, in *WriteReq, opts ...grpc.CallOption) (*WriteRes, error)
+	Read(ctx context.Context, in *ReadReq, opts ...grpc.CallOption) (*ReadRes, error)
 }
 
 type copierClient struct {
@@ -59,12 +61,23 @@ func (c *copierClient) Write(ctx context.Context, in *WriteReq, opts ...grpc.Cal
 	return out, nil
 }
 
+func (c *copierClient) Read(ctx context.Context, in *ReadReq, opts ...grpc.CallOption) (*ReadRes, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReadRes)
+	err := c.cc.Invoke(ctx, Copier_Read_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CopierServer is the server API for Copier service.
 // All implementations must embed UnimplementedCopierServer
 // for forward compatibility.
 type CopierServer interface {
 	Create(context.Context, *CreateReq) (*CreateRes, error)
 	Write(context.Context, *WriteReq) (*WriteRes, error)
+	Read(context.Context, *ReadReq) (*ReadRes, error)
 	mustEmbedUnimplementedCopierServer()
 }
 
@@ -80,6 +93,9 @@ func (UnimplementedCopierServer) Create(context.Context, *CreateReq) (*CreateRes
 }
 func (UnimplementedCopierServer) Write(context.Context, *WriteReq) (*WriteRes, error) {
 	return nil, status.Error(codes.Unimplemented, "method Write not implemented")
+}
+func (UnimplementedCopierServer) Read(context.Context, *ReadReq) (*ReadRes, error) {
+	return nil, status.Error(codes.Unimplemented, "method Read not implemented")
 }
 func (UnimplementedCopierServer) mustEmbedUnimplementedCopierServer() {}
 func (UnimplementedCopierServer) testEmbeddedByValue()                {}
@@ -138,6 +154,24 @@ func _Copier_Write_Handler(srv interface{}, ctx context.Context, dec func(interf
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Copier_Read_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReadReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CopierServer).Read(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Copier_Read_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CopierServer).Read(ctx, req.(*ReadReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Copier_ServiceDesc is the grpc.ServiceDesc for Copier service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -152,6 +186,10 @@ var Copier_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Write",
 			Handler:    _Copier_Write_Handler,
+		},
+		{
+			MethodName: "Read",
+			Handler:    _Copier_Read_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

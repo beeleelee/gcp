@@ -10,6 +10,7 @@ import (
 	"github.com/beeleelee/gcp/blockio"
 	"github.com/urfave/cli/v2"
 	"google.golang.org/grpc"
+	"io"
 )
 
 type copierServer struct {
@@ -60,6 +61,32 @@ func (c *copierServer) Write(ctx context.Context, req *blockio.WriteReq) (*block
 	return &blockio.WriteRes{
 		Success: true,
 		N:       int32(n),
+	}, nil
+}
+
+func (c *copierServer) Read(ctx context.Context, req *blockio.ReadReq) (*blockio.ReadRes, error) {
+	fd, err := os.Open(req.Path)
+	if err != nil {
+		return &blockio.ReadRes{Success: false}, nil
+	}
+	defer fd.Close()
+
+	info, err := fd.Stat()
+	if err != nil {
+		return &blockio.ReadRes{Success: false}, nil
+	}
+
+	buf := make([]byte, req.Size)
+	n, err := fd.ReadAt(buf, req.Offset)
+	if err != nil && err != io.EOF {
+		return &blockio.ReadRes{Success: false}, nil
+	}
+
+	return &blockio.ReadRes{
+		Success:  true,
+		N:        int64(n),
+		FileSize: info.Size(),
+		Data:     buf[:n],
 	}, nil
 }
 
