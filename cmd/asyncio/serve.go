@@ -92,16 +92,20 @@ func (c *copierServer) create(conn gnet.Conn, req *asyncio.CreateReq) {
 	}
 
 	if err != nil && errors.Is(err, os.ErrNotExist) {
-		// failed: cannot create a file by req.Path
-		if fd, err := os.OpenFile(req.Path, os.O_CREATE|os.O_RDONLY, os.FileMode(req.Mode)); err != nil {
+		if fd, err := os.OpenFile(req.Path, os.O_CREATE|os.O_RDWR, os.FileMode(req.Mode)); err != nil {
 			logger.Log.Debug("failed to open file", "err", err)
 			c.createFailed(conn, req)
 			return
 		} else {
 			if req.Size > 0 {
-				fd.Truncate(req.Size)
+				if err := fd.Truncate(req.Size); err != nil {
+					fd.Close()
+					logger.Log.Debug("failed to truncate file", "err", err)
+					c.createFailed(conn, req)
+					return
+				}
 			}
-			defer fd.Close()
+			fd.Close()
 		}
 	}
 	c.createSuccess(conn, req)
