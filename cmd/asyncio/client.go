@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"encoding/binary"
-	"fmt"
 	"io/fs"
 	"net"
 	"sync/atomic"
 
 	"github.com/beeleelee/gcp/asyncio"
+	"github.com/beeleelee/gcp/logger"
 )
 
 // wrap asyinc message with payload
@@ -153,14 +153,14 @@ func (cc *copierClient) handleReceive(conn net.Conn) {
 				buf = bufHead[readSize:]
 				n, err := conn.Read(buf)
 				if err != nil {
-					fmt.Println(err)
+					logger.Log.Debug("read error", "err", err)
 					// conn.Close()
 					return
 				}
 				readSize += n
 				if readSize > 1 && !magicNumChecked {
 					if !asyncio.MagicNumberCheck(bufHead[0], bufHead[1]) {
-						fmt.Println("bad protocol")
+						logger.Log.Debug("bad protocol")
 						return
 					} else {
 						magicNumChecked = true
@@ -169,19 +169,23 @@ func (cc *copierClient) handleReceive(conn net.Conn) {
 			} else if readSize == asyncio.HeadSize {
 				msgSize := binary.BigEndian.Uint32(bufHead[3 : 3+asyncio.MessageSize])
 				payloadSize := binary.BigEndian.Uint32(bufHead[3+asyncio.MessageSize:])
+				if msgSize > asyncio.MaxMsgSize || payloadSize > asyncio.MaxPayloadSize {
+					logger.Log.Debug("bad protocol: oversized message", "msgSize", msgSize, "payloadSize", payloadSize)
+					return
+				}
 				bufMsg = make([]byte, msgSize)
 				payload = make([]byte, payloadSize)
 			} else if readSize < asyncio.HeadSize+len(bufMsg) {
 				n, err := conn.Read(bufMsg[readSize-asyncio.HeadSize:])
 				if err != nil {
-					fmt.Println(err)
+					logger.Log.Debug("read error", "err", err)
 					return
 				}
 				readSize += n
 			} else if readSize < asyncio.HeadSize+len(bufMsg)+len(payload) {
 				n, err := conn.Read(payload[readSize-asyncio.HeadSize-len(bufMsg):])
 				if err != nil {
-					fmt.Println(err)
+					logger.Log.Debug("read error", "err", err)
 					return
 				}
 				readSize += n
