@@ -31,11 +31,14 @@ var cpCmd = &cli.Command{
 		ctx := c.Context
 		hostAddr := c.String("host")
 		args := c.Args().Slice()
-		if len(args) < 2 {
-			return errors.New("usage: gcp cp <src> <target>")
+		if len(args) < 1 {
+			return errors.New("usage: gcp cp <src> [target]")
 		}
 		src := args[0]
-		target := args[1]
+		var target string
+		if len(args) >= 2 {
+			target = args[1]
+		}
 		if target == "" {
 			target = filepath.Base(src)
 		} else if strings.HasSuffix(target, "/") {
