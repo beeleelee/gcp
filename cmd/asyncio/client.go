@@ -51,7 +51,7 @@ func newClient(ctx context.Context, target string, batch int) *copierClient {
 		sendHandle:    make(chan clientWrappedMsg),
 		receiveHandle: make(chan clientWrappedMsg),
 	}
-	cc.dail()
+	cc.dial()
 	go cc.processMsg()
 	return cc
 }
@@ -81,7 +81,7 @@ func (cc *copierClient) processMsg() {
 
 // request and hold connection with target host
 // set handles for read and write on connections
-func (cc *copierClient) dail() {
+func (cc *copierClient) dial() {
 	for i := 0; i < cc.batch; i++ {
 		conn, err := net.Dial("tcp", cc.target)
 		if err != nil {
