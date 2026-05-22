@@ -159,7 +159,7 @@ func (cc *copierClient) handleReceive(conn net.Conn) {
 				}
 				readSize += n
 				if readSize > 1 && !magicNumChecked {
-					if !asyncio.MagicNumberCheck(buf[0], buf[1]) {
+					if !asyncio.MagicNumberCheck(bufHead[0], bufHead[1]) {
 						fmt.Println("bad protocol")
 						return
 					} else {
