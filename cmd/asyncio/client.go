@@ -97,6 +97,7 @@ func (cc *copierClient) dail() {
 // encode received messages
 // send out to target host by connection
 func (cc *copierClient) handleSend(conn net.Conn) {
+	defer conn.Close()
 	for {
 		select {
 		case <-cc.ctx.Done():
@@ -112,21 +113,17 @@ func (cc *copierClient) handleSend(conn net.Conn) {
 			binary.BigEndian.PutUint32(head[3:3+asyncio.MessageSize], uint32(len(msgbs)))
 			binary.BigEndian.PutUint32(head[3+asyncio.MessageSize:], uint32(len(payload)))
 			if _, err := conn.Write(head); err != nil {
-				// todo
-				// emit connection error
-				// handle connection error
+				logger.Log.Debug("write error", "err", err)
+				return
 			}
 			if _, err := conn.Write(msgbs); err != nil {
-				// todo
-				// emit connection error
-				// handle connection error
+				logger.Log.Debug("write error", "err", err)
+				return
 			}
 			if _, err := conn.Write(payload); err != nil {
-				// todo
-				// emit connection error
-				// handle connection error
+				logger.Log.Debug("write error", "err", err)
+				return
 			}
-
 		}
 	}
 }
@@ -138,6 +135,7 @@ func (cc *copierClient) handleSend(conn net.Conn) {
 // decode packets to message
 // transfer message to match center (processMsg())
 func (cc *copierClient) handleReceive(conn net.Conn) {
+	defer conn.Close()
 	bufHead := make([]byte, asyncio.HeadSize)
 	readSize := 0
 	var bufMsg []byte
@@ -154,7 +152,6 @@ func (cc *copierClient) handleReceive(conn net.Conn) {
 				n, err := conn.Read(buf)
 				if err != nil {
 					logger.Log.Debug("read error", "err", err)
-					// conn.Close()
 					return
 				}
 				readSize += n
@@ -190,14 +187,14 @@ func (cc *copierClient) handleReceive(conn net.Conn) {
 				}
 				readSize += n
 			} else {
-				// a full packet has been read
 				msg, _, _, err := asyncio.DecodePre(bufHead)
 				if err != nil {
-					panic(asyncio.ErrMsgType)
+					logger.Log.Debug("decode error", "err", err)
+					return
 				}
 				if err := msg.Decode(bufMsg); err != nil {
-					// todo
-					// handle error
+					logger.Log.Debug("decode error", "err", err)
+					return
 				}
 				cc.receiveHandle <- clientWrappedMsg{
 					msg:     msg,
@@ -231,13 +228,14 @@ func (cc *copierClient) Create(target string, size int64, mode fs.FileMode) (cli
 		},
 		resChan: ch,
 	}
-	return <-ch, nil
+	select {
+	case res := <-ch:
+		return res, nil
+	case <-cc.ctx.Done():
+		return clientWrappedMsg{}, cc.ctx.Err()
+	}
 }
 
-// Write
-//
-// kind of rpc method
-// send data piece to target host
 func (cc *copierClient) Write(target string, off int64, payload []byte) (clientWrappedMsg, error) {
 	ch := make(chan clientWrappedMsg)
 	cc.msgIn <- clientRequestMsg{
@@ -251,5 +249,10 @@ func (cc *copierClient) Write(target string, off int64, payload []byte) (clientW
 		},
 		resChan: ch,
 	}
-	return <-ch, nil
+	select {
+	case res := <-ch:
+		return res, nil
+	case <-cc.ctx.Done():
+		return clientWrappedMsg{}, cc.ctx.Err()
+	}
 }
