@@ -57,23 +57,33 @@ loop:
 		wg.Add(1)
 		go func(off int64, size int64) {
 			defer wg.Done()
-			concurrentCtl <- struct{}{}
-			defer func() {
-				<-concurrentCtl
-			}()
+			select {
+			case concurrentCtl <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
+			defer func() { <-concurrentCtl }()
 			buf := make([]byte, size)
 			_, err := sfd.ReadAt(buf, off)
 			if err != nil {
-				errChan <- err
+				select {
+				case errChan <- err:
+				case <-ctx.Done():
+				}
 				return
 			}
 			_, err = cc.Write(target, off, buf)
 			if err != nil {
-				errChan <- err
+				select {
+				case errChan <- err:
+				case <-ctx.Done():
+				}
 				return
 			}
-			progressChan <- size
-
+			select {
+			case progressChan <- size:
+			case <-ctx.Done():
+			}
 		}(offset, chus)
 		offset += chus
 		remainSize -= chus
