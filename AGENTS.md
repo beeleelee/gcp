@@ -34,6 +34,9 @@ Asyncio (default):
 
 # copy file from local to host
 ./bin/gcp cp --host localhost:1717 --chunk 32768 --batch 4 ./src.txt /remote/path
+
+# download from host
+./bin/gcp cp --from /remote/path --host localhost:1717 --chunk 32768 --batch 4 ./local_dst
 ```
 
 Blockio (gRPC variant):
@@ -43,6 +46,9 @@ Blockio (gRPC variant):
 
 # copy
 ./bin/blockio cp --host localhost:1717 --chunk 32768 --batch 16 ./src.txt /remote/path
+
+# download from host
+./bin/blockio cp --from /remote/path --host localhost:1717 --chunk 32768 --batch 16 ./local_dst
 ```
 
 Log level: `--level` or `-L` flag (`error` default, accepts `info`, `debug`, etc.).
@@ -61,6 +67,11 @@ Log level: `--level` or `-L` flag (`error` default, accepts `info`, `debug`, etc
 - `make gcp` strips debug info (`-ldflags="-s -w"`); use `go build` directly from `cmd/asyncio` for debugging.
 - gRPC `WriteReq.Data` holds the file chunk bytes — large payloads are expected.
 - Asyncio server never closes `CreateRes`/`WriteRes` connections on client response — it keeps the conn open.
+- Both variants support `--from` for download: `./bin/gcp cp --from /remote/path ./local_dst`
+
+## Known bugs resolved
+
+- **2026-05-22**: Client hang on upload (`handleReceive` infinite loop). Root cause: `client.go:handleReceive` checked `readSize == asyncio.HeadSize` to parse headers and allocate buffers, but `readSize` was never incremented in that branch. This caused a busy-loop that allocated memory on every iteration without ever reading response data. Fix: changed condition to `len(bufMsg) == 0`, which only fires once after the header is read.
 
 
 ## Prebuilt binaries

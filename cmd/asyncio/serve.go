@@ -32,19 +32,24 @@ func (c *copierServer) OnBoot(eng gnet.Engine) gnet.Action {
 }
 
 func (c *copierServer) OnTraffic(conn gnet.Conn) gnet.Action {
-	msg, payload, err := asyncio.ReadMessage(conn)
-	if err != nil {
-		if err == asyncio.ErrIncompletePacket {
-			return gnet.None
+	logger.Log.Debug("OnTraffic called")
+	for {
+		msg, payload, err := asyncio.ReadMessage(conn)
+		if err != nil {
+			if err == asyncio.ErrIncompletePacket {
+				logger.Log.Debug("OnTraffic incomplete packet, returning")
+				return gnet.None
+			}
+			logger.Log.Debug("OnTraffic error", "err", err)
+			return gnet.Close
 		}
-		return gnet.Close
+		logger.Log.Debug("OnTraffic got msg", "type", msg.Type())
+		c.processMsgChan <- &wrappedMsg{
+			msg:     msg,
+			payload: payload,
+			conn:    conn,
+		}
 	}
-	c.processMsgChan <- &wrappedMsg{
-		msg:     msg,
-		payload: payload,
-		conn:    conn,
-	}
-	return gnet.None
 }
 
 func (c *copierServer) process() {
@@ -67,6 +72,11 @@ func (c *copierServer) process() {
 						c.write(wmsg.conn, msg, wmsg.payload)
 					case asyncio.WriteResT:
 						// for now, do nothing
+					case asyncio.ReadReqT:
+						msg, _ := (wmsg.msg).(*asyncio.ReadReq)
+						c.read(wmsg.conn, msg)
+					case asyncio.ReadResT:
+						// for now, do nothing
 					default:
 						logger.Log.Error("should not be here, unrecognized message type", "wmsg", wmsg)
 					}
@@ -77,6 +87,7 @@ func (c *copierServer) process() {
 }
 
 func (c *copierServer) create(conn gnet.Conn, req *asyncio.CreateReq) {
+	logger.Log.Debug("create called", "path", req.Path, "size", req.Size, "mode", req.Mode)
 	info, err := os.Stat(req.Path)
 	// failed: path exist but not a file
 	if err == nil && info.IsDir() {
@@ -121,11 +132,14 @@ func (c *copierServer) createFailed(conn gnet.Conn, req *asyncio.CreateReq) {
 }
 
 func (c *copierServer) createSuccess(conn gnet.Conn, req *asyncio.CreateReq) {
+	logger.Log.Debug("createSuccess called, sending response", "id", req.ID)
 	if err := asyncio.WriteMessage(conn, &asyncio.CreateRes{
 		ID:      req.ID,
 		Success: true,
 	}, nil); err != nil {
 		logger.Log.Debug("failed to write message", "err", err)
+	} else {
+		logger.Log.Debug("WriteMessage returned successfully for CreateRes")
 	}
 }
 
@@ -153,6 +167,53 @@ func (c *copierServer) writeFailed(conn gnet.Conn, req *asyncio.WriteReq) {
 		ID:      req.ID,
 		Success: false,
 	}, nil); err != nil {
+		logger.Log.Debug("failed to write message", "err", err)
+	}
+}
+
+func (c *copierServer) read(conn gnet.Conn, req *asyncio.ReadReq) {
+	fd, err := os.Open(req.Path)
+	if err != nil {
+		logger.Log.Debug("failed to open file for read", "err", err)
+		c.readFailed(conn, req)
+		return
+	}
+	defer fd.Close()
+
+	info, err := fd.Stat()
+	if err != nil {
+		logger.Log.Debug("failed to stat file for read", "err", err)
+		c.readFailed(conn, req)
+		return
+	}
+
+	buf := make([]byte, req.Size)
+	n, err := fd.ReadAt(buf, req.Offset)
+	if err != nil && n == 0 {
+		logger.Log.Debug("failed to read file", "err", err)
+		c.readFailed(conn, req)
+		return
+	}
+
+	c.readSuccess(conn, req, buf[:n], info.Size())
+}
+
+func (c *copierServer) readFailed(conn gnet.Conn, req *asyncio.ReadReq) {
+	if err := asyncio.WriteMessage(conn, &asyncio.ReadRes{
+		ID:      req.ID,
+		Success: false,
+	}, nil); err != nil {
+		logger.Log.Debug("failed to write message", "err", err)
+	}
+}
+
+func (c *copierServer) readSuccess(conn gnet.Conn, req *asyncio.ReadReq, data []byte, fileSize int64) {
+	if err := asyncio.WriteMessage(conn, &asyncio.ReadRes{
+		ID:       req.ID,
+		Success:  true,
+		N:        int64(len(data)),
+		FileSize: fileSize,
+	}, data); err != nil {
 		logger.Log.Debug("failed to write message", "err", err)
 	}
 }

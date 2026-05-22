@@ -27,7 +27,7 @@ make blockio    # gRPC binary
 ./bin/blockio serve --listen :1717
 ```
 
-### Copy (from local)
+### Upload (local to remote)
 
 ```
 ./bin/gcp cp --host localhost:1717 ./src.txt /remote/path/dst.txt
@@ -48,6 +48,20 @@ If the target ends with `/`, the source filename is appended:
 # copies to /remote/dir/src.txt
 ```
 
+### Download (remote to local)
+
+```
+./bin/gcp cp --from /remote/path/src.txt --host localhost:1717 ./local_dst.txt
+./bin/blockio cp --from /remote/path/src.txt --host localhost:1717 --chunk 32768 --batch 16 ./local_dst.txt
+```
+
+Omitting the local path uses the remote filename in the current directory:
+
+```
+./bin/gcp cp --from /remote/path/src.txt --host localhost:1717
+# downloads to ./src.txt
+```
+
 ### Flags
 
 | Flag     | Default        | Description           |
@@ -55,6 +69,7 @@ If the target ends with `/`, the source filename is appended:
 | `--host` | `localhost:1717` | Remote host address |
 | `--chunk`| `32768`        | Chunk size in bytes   |
 | `--batch`| `4` (gcp) / `16` (blockio) | Max concurrent chunks |
+| `--from` | —              | Remote source path (download mode) |
 
 Log level: `--level` or `-L` flag (`error` default, accepts `info`, `debug`, etc.).
 

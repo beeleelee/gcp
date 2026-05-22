@@ -3,7 +3,6 @@ package asyncio
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
 
 	"github.com/panjf2000/gnet/v2"
@@ -19,6 +18,8 @@ const (
 	CreateResT
 	WriteReqT
 	WriteResT
+	ReadReqT
+	ReadResT
 )
 
 const MessageSize = 4
@@ -55,6 +56,20 @@ type WriteRes struct {
 	ID      int64
 	Success bool
 	N       int32
+}
+
+type ReadReq struct {
+	ID     int64
+	Path   string
+	Offset int64
+	Size   int64
+}
+
+type ReadRes struct {
+	ID       int64
+	Success  bool
+	N        int64
+	FileSize int64
 }
 
 var (
@@ -96,12 +111,7 @@ func ReadMessage(conn gnet.Conn) (MSG, []byte, error) {
 
 func WriteMessage(conn gnet.Conn, msg MSG, payload []byte) error {
 	head, msgbs := EncodeMsg(msg, len(payload))
-	return conn.AsyncWritev([][]byte{head, msgbs, payload}, func(c gnet.Conn, err error) error {
-		if err != nil {
-			fmt.Println(err)
-		}
-		return nil
-	})
+	return conn.AsyncWritev([][]byte{head, msgbs, payload}, nil)
 }
 
 func switchError(err error) error {
@@ -144,6 +154,10 @@ func DecodePre(head []byte) (MSG, uint32, uint32, error) {
 		msg = &WriteReq{}
 	case WriteResT:
 		msg = &WriteRes{}
+	case ReadReqT:
+		msg = &ReadReq{}
+	case ReadResT:
+		msg = &ReadRes{}
 	default:
 		return nil, 0, 0, ErrMsgType
 	}

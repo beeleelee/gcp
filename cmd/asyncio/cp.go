@@ -26,11 +26,33 @@ var cpCmd = &cli.Command{
 			Name:  "batch",
 			Value: 4,
 		},
+		&cli.StringFlag{
+			Name:  "from",
+			Usage: "remote path to copy from host to local",
+		},
 	},
 	Action: func(c *cli.Context) (err error) {
 		ctx := c.Context
 		hostAddr := c.String("host")
+		remoteSrc := c.String("from")
 		args := c.Args().Slice()
+
+		if remoteSrc != "" {
+			src := remoteSrc
+			var target string
+			if len(args) >= 1 {
+				target = args[0]
+			}
+			if target == "" {
+				target = filepath.Base(src)
+			} else if strings.HasSuffix(target, "/") {
+				target = target + filepath.Base(src)
+			}
+			fmt.Println(hostAddr)
+			fmt.Println("remote:", src, "local:", target)
+			return cpOneFileFromHost(ctx, hostAddr, src, target, c.Int64("chunk"), c.Int("batch"))
+		}
+
 		if len(args) < 1 {
 			return errors.New("usage: gcp cp <src> [target]")
 		}

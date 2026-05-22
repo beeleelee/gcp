@@ -67,10 +67,13 @@ func (cc *copierClient) processMsg() {
 			return
 		case msg := <-cc.msgIn:
 			resCache[msg.msg.GetID()] = msg.resChan
+			logger.Log.Debug("processMsg forwarding", "type", msg.msg.Type(), "id", msg.msg.GetID())
 			cc.sendHandle <- msg.clientWrappedMsg
 		case wmsg := <-cc.receiveHandle:
 			key := wmsg.msg.GetID()
+			logger.Log.Debug("processMsg got response", "type", wmsg.msg.Type(), "id", key)
 			if ch, ok := resCache[key]; ok {
+				logger.Log.Debug("processMsg matching response to waiter", "id", key)
 				ch <- wmsg
 				delete(resCache, key)
 			}
@@ -105,6 +108,7 @@ func (cc *copierClient) handleSend(conn net.Conn) {
 		case wmsg := <-cc.sendHandle:
 			msg := wmsg.msg
 			payload := wmsg.payload
+			logger.Log.Debug("sending msg", "type", msg.Type(), "id", msg.GetID(), "payloadLen", len(payload))
 			head := make([]byte, asyncio.HeadSize)
 			head[0] = asyncio.MagicA
 			head[1] = asyncio.MagicB
@@ -124,6 +128,7 @@ func (cc *copierClient) handleSend(conn net.Conn) {
 				logger.Log.Debug("write error", "err", err)
 				return
 			}
+			logger.Log.Debug("msg sent", "type", msg.Type(), "id", msg.GetID())
 		}
 	}
 }
@@ -163,7 +168,7 @@ func (cc *copierClient) handleReceive(conn net.Conn) {
 						magicNumChecked = true
 					}
 				}
-			} else if readSize == asyncio.HeadSize {
+			} else if len(bufMsg) == 0 {
 				msgSize := binary.BigEndian.Uint32(bufHead[3 : 3+asyncio.MessageSize])
 				payloadSize := binary.BigEndian.Uint32(bufHead[3+asyncio.MessageSize:])
 				if msgSize > asyncio.MaxMsgSize || payloadSize > asyncio.MaxPayloadSize {
@@ -196,6 +201,7 @@ func (cc *copierClient) handleReceive(conn net.Conn) {
 					logger.Log.Debug("decode error", "err", err)
 					return
 				}
+				logger.Log.Debug("received response", "type", msg.Type(), "id", msg.GetID())
 				cc.receiveHandle <- clientWrappedMsg{
 					msg:     msg,
 					payload: append([]byte{}, payload...),
@@ -230,10 +236,13 @@ func (cc *copierClient) Create(target string, size int64, mode fs.FileMode) (cli
 		},
 		resChan: ch,
 	}
+	logger.Log.Debug("Create waiting for response")
 	select {
 	case res := <-ch:
+		logger.Log.Debug("Create got response")
 		return res, nil
 	case <-cc.ctx.Done():
+		logger.Log.Debug("Create context done")
 		return clientWrappedMsg{}, cc.ctx.Err()
 	}
 }
@@ -248,6 +257,27 @@ func (cc *copierClient) Write(target string, off int64, payload []byte) (clientW
 				Path:   target,
 			},
 			payload: payload,
+		},
+		resChan: ch,
+	}
+	select {
+	case res := <-ch:
+		return res, nil
+	case <-cc.ctx.Done():
+		return clientWrappedMsg{}, cc.ctx.Err()
+	}
+}
+
+func (cc *copierClient) Read(target string, off int64, size int64) (clientWrappedMsg, error) {
+	ch := make(chan clientWrappedMsg)
+	cc.msgIn <- clientRequestMsg{
+		clientWrappedMsg: clientWrappedMsg{
+			msg: &asyncio.ReadReq{
+				ID:     cc.genMsgID(),
+				Offset: off,
+				Size:   size,
+				Path:   target,
+			},
 		},
 		resChan: ch,
 	}
