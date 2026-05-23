@@ -2,20 +2,22 @@
 
 Copy files from local to a remote host over TCP. Two implementations in one repo.
 
+> **Note:** The `blockio` (gRPC) module is **deprecated**. It is kept for reference but will not receive new features. Use the `gcp` (asyncio) module instead.
+
 ## Binaries
 
 | make target | source dir     | output binary   | transport          |
 |-------------|----------------|-----------------|--------------------|
 | `gcp`       | `cmd/asyncio/` | `./bin/gcp`     | custom TCP + CBOR  |
-| `blockio`   | `cmd/blockio/` | `./bin/blockio` | gRPC               |
+| ~~`blockio`~~ | ~~`cmd/blockio/`~~ | ~~`./bin/blockio`~~ | ~~gRPC~~ (deprecated) |
 
 Both default to port `1717`.
 
 ## Build
 
 ```
-make gcp        # asyncio binary
-make blockio    # gRPC binary
+make gcp               # asyncio binary (recommended)
+make blockio           # gRPC binary (deprecated)
 ```
 
 ## Usage
@@ -24,14 +26,14 @@ make blockio    # gRPC binary
 
 ```
 ./bin/gcp serve --listen tcp://0.0.0.0:1717 --process-num 4 --multicore true
-./bin/blockio serve --listen :1717
+./bin/blockio serve --listen :1717   # (deprecated)
 ```
 
 ### Upload (local to remote)
 
 ```
 ./bin/gcp cp --host localhost:1717 ./src.txt /remote/path/dst.txt
-./bin/blockio cp --host localhost:1717 --chunk 32768 --batch 16 ./src.txt /remote/path/dst.txt
+./bin/blockio cp --host localhost:1717 --chunk 32768 --batch 16 ./src.txt /remote/path/dst.txt   # (deprecated)
 ```
 
 The target path is optional — if omitted or empty, the source filename is used:
@@ -52,7 +54,7 @@ If the target ends with `/`, the source filename is appended:
 
 ```
 ./bin/gcp cp --from /remote/path/src.txt --host localhost:1717 ./local_dst.txt
-./bin/blockio cp --from /remote/path/src.txt --host localhost:1717 --chunk 32768 --batch 16 ./local_dst.txt
+./bin/blockio cp --from /remote/path/src.txt --host localhost:1717 --chunk 32768 --batch 16 ./local_dst.txt   # (deprecated)
 ```
 
 Omitting the local path uses the remote filename in the current directory:

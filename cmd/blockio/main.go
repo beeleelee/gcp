@@ -8,6 +8,7 @@ import (
 )
 
 func main() {
+	fmt.Fprintln(os.Stderr, "WARNING: blockio is deprecated. Use 'gcp' (asyncio) instead.")
 	local := []*cli.Command{
 		serveCmd,
 		cpCmd,
