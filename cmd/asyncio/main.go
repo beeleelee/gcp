@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/beeleelee/gcp/logger"
 	"github.com/rs/zerolog"
@@ -35,7 +38,10 @@ func main() {
 		},
 	}
 
-	if err := app.Run(os.Args); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	if err := app.RunContext(ctx, os.Args); err != nil {
 		log.Error("Failed to run", "error", err)
 		os.Exit(1)
 	}

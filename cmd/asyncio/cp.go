@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/urfave/cli/v2"
 )
@@ -124,6 +125,21 @@ var cpCmd = &cli.Command{
 			Name:  "batch",
 			Value: 4,
 		},
+		&cli.DurationFlag{
+			Name:  "timeout",
+			Value: 15 * time.Second,
+			Usage: "read/write timeout (0 to disable)",
+		},
+		&cli.IntFlag{
+			Name:  "retry",
+			Value: 3,
+			Usage: "max chunk transfer retries",
+		},
+		&cli.BoolFlag{
+			Name:  "checksum",
+			Value: true,
+			Usage: "enable CRC-32 chunk checksums",
+		},
 	},
 	Action: func(c *cli.Context) (err error) {
 		ctx := c.Context
@@ -149,7 +165,7 @@ var cpCmd = &cli.Command{
 			}
 			fmt.Println(hostPort)
 			fmt.Println("remote:", remotePath, "local:", target)
-			return cpOneFileFromHost(ctx, hostPort, remotePath, target, c.Int64("chunk"), c.Int("batch"))
+			return cpOneFileFromHost(ctx, hostPort, remotePath, target, c.Int64("chunk"), c.Int("batch"), c.Duration("timeout"), c.Int("retry"), c.Bool("checksum"))
 
 		case !srcRemote && dstRemote:
 			hostPort, remotePath, err := parseRemoteAddr(dst)
@@ -162,7 +178,7 @@ var cpCmd = &cli.Command{
 			}
 			fmt.Println(hostPort)
 			fmt.Println(src, target)
-			return cpOneFileToHost(ctx, hostPort, src, target, c.Int64("chunk"), c.Int("batch"))
+			return cpOneFileToHost(ctx, hostPort, src, target, c.Int64("chunk"), c.Int("batch"), c.Duration("timeout"), c.Int("retry"), c.Bool("checksum"))
 
 		default:
 			return errors.New("usage: gcp cp <source> <destination>: one must be a local path, the other a remote address (host:port/path)")

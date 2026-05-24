@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"hash/crc32"
 	"os"
 
 	"github.com/beeleelee/gcp/asyncio"
@@ -144,6 +145,11 @@ func (c *copierServer) createSuccess(conn gnet.Conn, req *asyncio.CreateReq) {
 }
 
 func (c *copierServer) write(conn gnet.Conn, req *asyncio.WriteReq, payload []byte) {
+	if req.Checksum != 0 && crc32.ChecksumIEEE(payload) != req.Checksum {
+		logger.Log.Debug("checksum mismatch, rejecting write", "path", req.Path, "offset", req.Offset)
+		c.writeFailed(conn, req)
+		return
+	}
 	tpath := req.Path
 	fd, err := os.OpenFile(tpath, os.O_RDWR, 0644)
 	if err != nil {
@@ -208,11 +214,14 @@ func (c *copierServer) readFailed(conn gnet.Conn, req *asyncio.ReadReq) {
 }
 
 func (c *copierServer) readSuccess(conn gnet.Conn, req *asyncio.ReadReq, data []byte, fileSize int64) {
+	checksum := crc32.ChecksumIEEE(data)
+
 	if err := asyncio.WriteMessage(conn, &asyncio.ReadRes{
 		ID:       req.ID,
 		Success:  true,
 		N:        int64(len(data)),
 		FileSize: fileSize,
+		Checksum: checksum,
 	}, data); err != nil {
 		logger.Log.Debug("failed to write message", "err", err)
 	}
@@ -260,7 +269,16 @@ var serveCmd = &cli.Command{
 		listenAddr := c.String("listen")
 		processNum := c.Int("process-num")
 		multicore := c.Bool("multicore")
-		err = gnet.Run(newServer(c.Context, processNum), listenAddr, gnet.WithMulticore(multicore))
+
+		srv := newServer(c.Context, processNum)
+
+		go func() {
+			<-c.Context.Done()
+			logger.Log.Info("shutting down gracefully...")
+			srv.eng.Stop(c.Context)
+		}()
+
+		err = gnet.Run(srv, listenAddr, gnet.WithMulticore(multicore))
 		if err == nil {
 			logger.Log.Info("", "listen", listenAddr, "process", processNum, "multicore", multicore)
 		}

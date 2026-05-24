@@ -47,9 +47,10 @@ type CreateRes struct {
 }
 
 type WriteReq struct {
-	ID     int64
-	Path   string
-	Offset int64
+	ID       int64
+	Path     string
+	Offset   int64
+	Checksum uint32
 }
 
 type WriteRes struct {
@@ -70,6 +71,7 @@ type ReadRes struct {
 	Success  bool
 	N        int64
 	FileSize int64
+	Checksum uint32
 }
 
 var (

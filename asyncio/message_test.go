@@ -35,6 +35,8 @@ func TestEncodeDecodePreRoundTrip(t *testing.T) {
 		{"WriteReq", &WriteReq{ID: 4, Path: "/tmp/f", Offset: 1024}, 32768},
 		{"WriteRes-success", &WriteRes{ID: 5, Success: true, N: 4096}, 0},
 		{"WriteRes-fail", &WriteRes{ID: 6, Success: false, N: 0}, 0},
+		{"ReadReq", &ReadReq{ID: 7, Path: "/tmp/f", Offset: 0, Size: 4096}, 0},
+		{"ReadRes", &ReadRes{ID: 8, Success: true, N: 4096, FileSize: 65536, Checksum: 0}, 4096},
 	}
 
 	for _, tc := range tests {
@@ -129,6 +131,30 @@ func TestCreateResCBORRoundTrip(t *testing.T) {
 	}
 }
 
+func TestReadReqCBORRoundTrip(t *testing.T) {
+	req := &ReadReq{ID: 10, Path: "/remote/f", Offset: 4096, Size: 32768}
+	bs := req.Encode()
+	var decoded ReadReq
+	if err := decoded.Decode(bs); err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if decoded != *req {
+		t.Errorf("round-trip mismatch: %+v", decoded)
+	}
+}
+
+func TestReadResCBORRoundTrip(t *testing.T) {
+	res := &ReadRes{ID: 11, Success: true, N: 32768, FileSize: 1048576, Checksum: 12345678}
+	bs := res.Encode()
+	var decoded ReadRes
+	if err := decoded.Decode(bs); err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if decoded != *res {
+		t.Errorf("round-trip mismatch: %+v", decoded)
+	}
+}
+
 func TestEncodeMsgPayloadSizeInHeader(t *testing.T) {
 	msg := &WriteReq{ID: 1, Path: "/f", Offset: 0}
 	head, _ := EncodeMsg(msg, 65535)
@@ -169,6 +195,12 @@ func TestGetID(t *testing.T) {
 	if id := (&WriteRes{ID: 13}).GetID(); id != 13 {
 		t.Errorf("WriteRes.GetID = %d", id)
 	}
+	if id := (&ReadReq{ID: 14}).GetID(); id != 14 {
+		t.Errorf("ReadReq.GetID = %d", id)
+	}
+	if id := (&ReadRes{ID: 15}).GetID(); id != 15 {
+		t.Errorf("ReadRes.GetID = %d", id)
+	}
 }
 
 func TestTypeConstants(t *testing.T) {
@@ -183,6 +215,12 @@ func TestTypeConstants(t *testing.T) {
 	}
 	if WriteResT != 3 {
 		t.Errorf("WriteResT = %d, want 3", WriteResT)
+	}
+	if ReadReqT != 4 {
+		t.Errorf("ReadReqT = %d, want 4", ReadReqT)
+	}
+	if ReadResT != 5 {
+		t.Errorf("ReadResT = %d, want 5", ReadResT)
 	}
 }
 

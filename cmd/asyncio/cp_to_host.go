@@ -14,6 +14,9 @@ func cpOneFileToHost(
 	hostAddr, src, target string,
 	chunkSize int64,
 	batch int,
+	timeout time.Duration,
+	maxRetries int,
+	useChecksum bool,
 ) (err error) {
 	// open the src
 	sfd, err := os.Open(src)
@@ -28,7 +31,7 @@ func cpOneFileToHost(
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	cc, err := newClient(ctx, hostAddr, batch)
+	cc, err := newClient(ctx, hostAddr, batch, timeout, useChecksum)
 	if err != nil {
 		return
 	}
@@ -78,10 +81,31 @@ loop:
 				}
 				return
 			}
-			_, err = cc.Write(target, off, buf)
-			if err != nil {
+			var writeErr error
+			for attempt := 0; attempt <= maxRetries; attempt++ {
 				select {
-				case errChan <- err:
+				case <-ctx.Done():
+					errChan <- ctx.Err()
+					return
+				default:
+				}
+				_, writeErr = cc.Write(target, off, buf)
+				if writeErr == nil {
+					break
+				}
+				if attempt < maxRetries {
+					backoff := time.Duration(100<<attempt) * time.Millisecond
+					select {
+					case <-ctx.Done():
+						errChan <- ctx.Err()
+						return
+					case <-time.After(backoff):
+					}
+				}
+			}
+			if writeErr != nil {
+				select {
+				case errChan <- writeErr:
 				case <-ctx.Done():
 				}
 				return

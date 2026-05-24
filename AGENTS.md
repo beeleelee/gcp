@@ -35,10 +35,13 @@ Asyncio (default):
 ./bin/gcp serve --listen tcp://0.0.0.0:1717 --process-num 4 --multicore true
 
 # copy file from local to host
-./bin/gcp cp --host localhost:1717 --chunk 32768 --batch 4 ./src.txt /remote/path
+./bin/gcp cp --chunk 32768 --batch 4 ./src.txt host:1717/remote/path
 
 # download from host
-./bin/gcp cp --from /remote/path --host localhost:1717 --chunk 32768 --batch 4 ./local_dst
+./bin/gcp cp --chunk 32768 --batch 4 host:1717/remote/path ./local_dst
+
+# with reliability options
+./bin/gcp cp --timeout 15s --retry 3 --checksum true ./src.txt host:1717/dst
 ```
 
 Blockio (gRPC variant, deprecated):
@@ -54,6 +57,16 @@ Blockio (gRPC variant, deprecated):
 ```
 
 Log level: `--level` or `-L` flag (`error` default, accepts `info`, `debug`, etc.).
+
+### `cp` flags
+
+| Flag       | Default | Description                            |
+|------------|---------|----------------------------------------|
+| `--chunk`  | 32768   | chunk size in bytes                    |
+| `--batch`  | 4       | max concurrent chunk transfers         |
+| `--timeout`| 15s     | read/write timeout (0 to disable)      |
+| `--retry`  | 3       | max chunk transfer retries             |
+| `--checksum`| true   | enable CRC-32 chunk integrity checks   |
 
 ## Architecture notes
 

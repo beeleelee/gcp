@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"hash/crc32"
 	"io/fs"
 	"net"
+	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/beeleelee/gcp/asyncio"
 	"github.com/beeleelee/gcp/logger"
@@ -38,16 +41,20 @@ type copierClient struct {
 	target        string
 	id            int64
 	batch         int
+	timeout       time.Duration
+	useChecksum   bool
 	msgIn         chan clientRequestMsg
 	sendHandle    chan clientWrappedMsg
 	receiveHandle chan clientWrappedMsg
 }
 
-func newClient(ctx context.Context, target string, batch int) (*copierClient, error) {
+func newClient(ctx context.Context, target string, batch int, timeout time.Duration, useChecksum bool) (*copierClient, error) {
 	cc := &copierClient{
 		ctx:           ctx,
 		target:        target,
 		batch:         batch,
+		timeout:       timeout,
+		useChecksum:   useChecksum,
 		msgIn:         make(chan clientRequestMsg),
 		sendHandle:    make(chan clientWrappedMsg),
 		receiveHandle: make(chan clientWrappedMsg),
@@ -85,18 +92,57 @@ func (cc *copierClient) processMsg() {
 
 }
 
-// request and hold connection with target host
-// set handles for read and write on connections
+// dial probes one initial connection (fail-fast),
+// then spawns batch supervised goroutines with reconnect.
 func (cc *copierClient) dial() error {
+	conn, err := net.Dial("tcp", cc.target)
+	if err != nil {
+		return fmt.Errorf("dial %s: %w", cc.target, err)
+	}
+	conn.Close()
 	for i := 0; i < cc.batch; i++ {
-		conn, err := net.Dial("tcp", cc.target)
-		if err != nil {
-			return fmt.Errorf("dial %s: %w", cc.target, err)
-		}
-		go cc.handleSend(conn)
-		go cc.handleReceive(conn)
+		go cc.runConn()
 	}
 	return nil
+}
+
+// runConn maintains one connection in the pool with automatic reconnection.
+// On I/O error it closes and re-dials with exponential backoff.
+func (cc *copierClient) runConn() {
+	backoff := 100 * time.Millisecond
+	const maxBackoff = 5 * time.Second
+	for {
+		conn, err := net.Dial("tcp", cc.target)
+		if err != nil {
+			logger.Log.Debug("reconnect dial error", "err", err)
+			select {
+			case <-cc.ctx.Done():
+				return
+			case <-time.After(backoff):
+			}
+			if backoff < maxBackoff {
+				backoff *= 2
+			}
+			continue
+		}
+		backoff = 100 * time.Millisecond
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			cc.handleSend(conn)
+		}()
+		go func() {
+			defer wg.Done()
+			cc.handleReceive(conn)
+		}()
+		wg.Wait()
+
+		if cc.ctx.Err() != nil {
+			return
+		}
+	}
 }
 
 // handleSend
@@ -120,13 +166,22 @@ func (cc *copierClient) handleSend(conn net.Conn) {
 			msgbs := msg.Encode()
 			binary.BigEndian.PutUint32(head[3:3+asyncio.MessageSize], uint32(len(msgbs)))
 			binary.BigEndian.PutUint32(head[3+asyncio.MessageSize:], uint32(len(payload)))
+			if cc.timeout > 0 {
+				conn.SetWriteDeadline(time.Now().Add(cc.timeout))
+			}
 			if _, err := conn.Write(head); err != nil {
 				logger.Log.Debug("write error", "err", err)
 				return
 			}
+			if cc.timeout > 0 {
+				conn.SetWriteDeadline(time.Now().Add(cc.timeout))
+			}
 			if _, err := conn.Write(msgbs); err != nil {
 				logger.Log.Debug("write error", "err", err)
 				return
+			}
+			if cc.timeout > 0 {
+				conn.SetWriteDeadline(time.Now().Add(cc.timeout))
 			}
 			if _, err := conn.Write(payload); err != nil {
 				logger.Log.Debug("write error", "err", err)
@@ -158,6 +213,9 @@ func (cc *copierClient) handleReceive(conn net.Conn) {
 		default:
 			if readSize < asyncio.HeadSize {
 				buf = bufHead[readSize:]
+				if cc.timeout > 0 {
+					conn.SetReadDeadline(time.Now().Add(cc.timeout))
+				}
 				n, err := conn.Read(buf)
 				if err != nil {
 					logger.Log.Debug("read error", "err", err)
@@ -182,6 +240,9 @@ func (cc *copierClient) handleReceive(conn net.Conn) {
 				bufMsg = make([]byte, msgSize)
 				payload = make([]byte, payloadSize)
 			} else if readSize < asyncio.HeadSize+len(bufMsg) {
+				if cc.timeout > 0 {
+					conn.SetReadDeadline(time.Now().Add(cc.timeout))
+				}
 				n, err := conn.Read(bufMsg[readSize-asyncio.HeadSize:])
 				if err != nil {
 					logger.Log.Debug("read error", "err", err)
@@ -189,6 +250,9 @@ func (cc *copierClient) handleReceive(conn net.Conn) {
 				}
 				readSize += n
 			} else if readSize < asyncio.HeadSize+len(bufMsg)+len(payload) {
+				if cc.timeout > 0 {
+					conn.SetReadDeadline(time.Now().Add(cc.timeout))
+				}
 				n, err := conn.Read(payload[readSize-asyncio.HeadSize-len(bufMsg):])
 				if err != nil {
 					logger.Log.Debug("read error", "err", err)
@@ -253,13 +317,17 @@ func (cc *copierClient) Create(target string, size int64, mode fs.FileMode) (cli
 
 func (cc *copierClient) Write(target string, off int64, payload []byte) (clientWrappedMsg, error) {
 	ch := make(chan clientWrappedMsg)
+	req := &asyncio.WriteReq{
+		ID:     cc.genMsgID(),
+		Offset: off,
+		Path:   target,
+	}
+	if cc.useChecksum && len(payload) > 0 {
+		req.Checksum = crc32.ChecksumIEEE(payload)
+	}
 	cc.msgIn <- clientRequestMsg{
 		clientWrappedMsg: clientWrappedMsg{
-			msg: &asyncio.WriteReq{
-				ID:     cc.genMsgID(),
-				Offset: off,
-				Path:   target,
-			},
+			msg:     req,
 			payload: payload,
 		},
 		resChan: ch,

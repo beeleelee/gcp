@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"hash/crc32"
 	"os"
 	"sync"
 	"time"
@@ -15,6 +17,9 @@ func cpOneFileFromHost(
 	hostAddr, src, target string,
 	chunkSize int64,
 	batch int,
+	timeout time.Duration,
+	maxRetries int,
+	useChecksum bool,
 ) (err error) {
 	tfd, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
 	if err != nil {
@@ -24,18 +29,38 @@ func cpOneFileFromHost(
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	cc, err := newClient(ctx, hostAddr, batch)
+	cc, err := newClient(ctx, hostAddr, batch, timeout, useChecksum)
 	if err != nil {
 		return
 	}
 
-	// first read to get file size
-	res, err := cc.Read(src, 0, chunkSize)
-	if err != nil {
-		return
+	// first read to get file size (with retries)
+	var (
+		res     clientWrappedMsg
+		readRes *asyncio.ReadRes
+	)
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		res, err = cc.Read(src, 0, chunkSize)
+		if err == nil {
+			readRes = res.msg.(*asyncio.ReadRes)
+			if !readRes.Success {
+				err = fmt.Errorf("server returned success=false for first read")
+			} else if useChecksum && readRes.Checksum != 0 && crc32.ChecksumIEEE(res.payload) != readRes.Checksum {
+				err = fmt.Errorf("checksum mismatch for first read at offset 0")
+			} else {
+				break
+			}
+		}
+		if attempt < maxRetries {
+			backoff := time.Duration(100<<attempt) * time.Millisecond
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(backoff):
+			}
+		}
 	}
-	readRes := res.msg.(*asyncio.ReadRes)
-	if !readRes.Success {
+	if err != nil {
 		return
 	}
 	_, err = tfd.WriteAt(res.payload, 0)
@@ -75,23 +100,49 @@ loop:
 				return
 			}
 			defer func() { <-concurrentCtl }()
-			res, err := cc.Read(src, off, size)
-			if err != nil {
+
+			var (
+				res     clientWrappedMsg
+				readErr error
+			)
+		retryLoop:
+			for attempt := 0; attempt <= maxRetries; attempt++ {
 				select {
-				case errChan <- err:
+				case <-ctx.Done():
+					errChan <- ctx.Err()
+					return
+				default:
+				}
+				res, readErr = cc.Read(src, off, size)
+				if readErr == nil {
+					readRes := res.msg.(*asyncio.ReadRes)
+					if !readRes.Success {
+						readErr = fmt.Errorf("server returned success=false for offset %d", off)
+					} else if useChecksum && readRes.Checksum != 0 && crc32.ChecksumIEEE(res.payload) != readRes.Checksum {
+						readErr = fmt.Errorf("checksum mismatch for offset %d", off)
+					} else {
+						break retryLoop
+					}
+				}
+				if attempt < maxRetries {
+					backoff := time.Duration(100<<attempt) * time.Millisecond
+					select {
+					case <-ctx.Done():
+						errChan <- ctx.Err()
+						return
+					case <-time.After(backoff):
+					}
+				}
+			}
+			if readErr != nil {
+				select {
+				case errChan <- readErr:
 				case <-ctx.Done():
 				}
 				return
 			}
-			readRes := res.msg.(*asyncio.ReadRes)
-			if !readRes.Success {
-				select {
-				case errChan <- context.Canceled:
-				case <-ctx.Done():
-				}
-				return
-			}
-			_, err = tfd.WriteAt(res.payload, off)
+
+			_, err := tfd.WriteAt(res.payload, off)
 			if err != nil {
 				select {
 				case errChan <- err:
