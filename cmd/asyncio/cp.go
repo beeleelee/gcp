@@ -140,6 +140,10 @@ var cpCmd = &cli.Command{
 			Value: true,
 			Usage: "enable CRC-32 chunk checksums",
 		},
+		&cli.BoolFlag{
+			Name:  "recursive, r",
+			Usage: "copy directories recursively",
+		},
 	},
 	Action: func(c *cli.Context) (err error) {
 		ctx := c.Context
@@ -152,6 +156,28 @@ var cpCmd = &cli.Command{
 		src, dst := args[0], args[1]
 
 		srcRemote, dstRemote := isRemoteAddr(src), isRemoteAddr(dst)
+
+		if !srcRemote {
+			if st, stErr := os.Stat(src); stErr == nil && st.IsDir() {
+				if !c.Bool("recursive") {
+					return fmt.Errorf("source is a directory; use -r to copy directories")
+				}
+				if !dstRemote {
+					return errors.New("downloading directories is not yet supported")
+				}
+				hostPort, remotePath, err := parseRemoteAddr(dst)
+				if err != nil {
+					return err
+				}
+				target := remotePath
+				if target == "" || strings.HasSuffix(target, "/") {
+					target = target + filepath.Base(src)
+				}
+				fmt.Println(hostPort)
+				fmt.Println(src, target)
+				return cpDirToHost(ctx, hostPort, src, target, c.Int64("chunk"), c.Int("batch"), c.Duration("timeout"), c.Int("retry"), c.Bool("checksum"))
+			}
+		}
 
 		switch {
 		case srcRemote && !dstRemote:

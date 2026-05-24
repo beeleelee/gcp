@@ -72,40 +72,9 @@ loop:
 				return
 			}
 			defer func() { <-concurrentCtl }()
-			buf := make([]byte, size)
-			_, err := sfd.ReadAt(buf, off)
-			if err != nil {
+			if err := uploadFileChunk(ctx, cc, sfd, target, off, size, maxRetries); err != nil {
 				select {
 				case errChan <- err:
-				case <-ctx.Done():
-				}
-				return
-			}
-			var writeErr error
-			for attempt := 0; attempt <= maxRetries; attempt++ {
-				select {
-				case <-ctx.Done():
-					errChan <- ctx.Err()
-					return
-				default:
-				}
-				_, writeErr = cc.Write(target, off, buf)
-				if writeErr == nil {
-					break
-				}
-				if attempt < maxRetries {
-					backoff := time.Duration(100<<attempt) * time.Millisecond
-					select {
-					case <-ctx.Done():
-						errChan <- ctx.Err()
-						return
-					case <-time.After(backoff):
-					}
-				}
-			}
-			if writeErr != nil {
-				select {
-				case errChan <- writeErr:
 				case <-ctx.Done():
 				}
 				return
@@ -120,4 +89,33 @@ loop:
 	}
 	wg.Wait()
 	return
+}
+
+// uploadFileChunk reads a chunk from the local file and sends it via cc.Write with retries.
+func uploadFileChunk(ctx context.Context, cc *copierClient, sfd *os.File, target string, off, size int64, maxRetries int) error {
+	buf := make([]byte, size)
+	if _, err := sfd.ReadAt(buf, off); err != nil {
+		return err
+	}
+	var writeErr error
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		_, writeErr = cc.Write(target, off, buf)
+		if writeErr == nil {
+			return nil
+		}
+		if attempt < maxRetries {
+			backoff := time.Duration(100<<attempt) * time.Millisecond
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(backoff):
+			}
+		}
+	}
+	return writeErr
 }

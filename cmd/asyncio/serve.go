@@ -5,6 +5,7 @@ import (
 	"errors"
 	"hash/crc32"
 	"os"
+	"path/filepath"
 
 	"github.com/beeleelee/gcp/asyncio"
 	"github.com/beeleelee/gcp/logger"
@@ -89,14 +90,30 @@ func (c *copierServer) process() {
 
 func (c *copierServer) create(conn gnet.Conn, req *asyncio.CreateReq) {
 	logger.Log.Debug("create called", "path", req.Path, "size", req.Size, "mode", req.Mode)
+
+	if req.IsDir {
+		if err := os.MkdirAll(req.Path, os.FileMode(req.Mode)); err != nil {
+			logger.Log.Debug("failed to create directory", "err", err)
+			c.createFailed(conn, req)
+			return
+		}
+		c.createSuccess(conn, req)
+		return
+	}
+
+	// ensure parent directory exists
+	if err := os.MkdirAll(filepath.Dir(req.Path), 0755); err != nil {
+		logger.Log.Debug("failed to create parent directory", "err", err)
+		c.createFailed(conn, req)
+		return
+	}
+
 	info, err := os.Stat(req.Path)
-	// failed: path exist but not a file
 	if err == nil && info.IsDir() {
 		logger.Log.Debug("create failed as target is dir", "createReq", req)
 		c.createFailed(conn, req)
 		return
 	}
-	// failed: cannot get file info
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		logger.Log.Debug("failed to get file info", "err", err)
 		c.createFailed(conn, req)

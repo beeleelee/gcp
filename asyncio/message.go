@@ -35,10 +35,11 @@ const MaxMsgSize = 1 << 16
 const MaxPayloadSize = 1 << 24
 
 type CreateReq struct {
-	ID   int64
-	Size int64
-	Mode uint32
-	Path string
+	ID    int64
+	Size  int64
+	Mode  uint32
+	Path  string
+	IsDir bool
 }
 
 type CreateRes struct {

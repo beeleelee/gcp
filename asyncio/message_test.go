@@ -91,6 +91,24 @@ func TestMsgCBORRoundTrip(t *testing.T) {
 	if decoded.Path != req.Path {
 		t.Errorf("Path = %q, want %q", decoded.Path, req.Path)
 	}
+	if decoded.IsDir {
+		t.Error("IsDir = true, want false")
+	}
+}
+
+func TestCreateReqIsDirCBORRoundTrip(t *testing.T) {
+	req := &CreateReq{ID: 1, Size: 0, Mode: 0755, Path: "/remote/dir", IsDir: true}
+	bs := req.Encode()
+	var decoded CreateReq
+	if err := decoded.Decode(bs); err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if decoded.ID != req.ID {
+		t.Errorf("ID = %d, want %d", decoded.ID, req.ID)
+	}
+	if !decoded.IsDir {
+		t.Error("IsDir = false, want true")
+	}
 }
 
 func TestWriteReqCBORRoundTrip(t *testing.T) {
