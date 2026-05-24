@@ -26,7 +26,12 @@ func cpOneFileToHost(
 	if err != nil {
 		return
 	}
-	cc := newClient(ctx, hostAddr, batch)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	cc, err := newClient(ctx, hostAddr, batch)
+	if err != nil {
+		return
+	}
 
 	// touch target file
 	_, err = cc.Create(target, sfinfo.Size(), sfinfo.Mode())
@@ -47,6 +52,7 @@ loop:
 	for remainSize > 0 {
 		select {
 		case err = <-errChan:
+			cancel()
 			break loop
 		default:
 		}

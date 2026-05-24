@@ -22,7 +22,12 @@ func cpOneFileFromHost(
 	}
 	defer tfd.Close()
 
-	cc := newClient(ctx, hostAddr, batch)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	cc, err := newClient(ctx, hostAddr, batch)
+	if err != nil {
+		return
+	}
 
 	// first read to get file size
 	res, err := cc.Read(src, 0, chunkSize)
@@ -53,6 +58,7 @@ loop:
 	for remainSize > 0 {
 		select {
 		case err = <-errChan:
+			cancel()
 			break loop
 		default:
 		}

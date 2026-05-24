@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io/fs"
 	"net"
 	"sync/atomic"
@@ -42,7 +43,7 @@ type copierClient struct {
 	receiveHandle chan clientWrappedMsg
 }
 
-func newClient(ctx context.Context, target string, batch int) *copierClient {
+func newClient(ctx context.Context, target string, batch int) (*copierClient, error) {
 	cc := &copierClient{
 		ctx:           ctx,
 		target:        target,
@@ -51,9 +52,11 @@ func newClient(ctx context.Context, target string, batch int) *copierClient {
 		sendHandle:    make(chan clientWrappedMsg),
 		receiveHandle: make(chan clientWrappedMsg),
 	}
-	cc.dial()
+	if err := cc.dial(); err != nil {
+		return nil, err
+	}
 	go cc.processMsg()
-	return cc
+	return cc, nil
 }
 
 // processMsg
@@ -84,15 +87,16 @@ func (cc *copierClient) processMsg() {
 
 // request and hold connection with target host
 // set handles for read and write on connections
-func (cc *copierClient) dial() {
+func (cc *copierClient) dial() error {
 	for i := 0; i < cc.batch; i++ {
 		conn, err := net.Dial("tcp", cc.target)
 		if err != nil {
-			panic(err)
+			return fmt.Errorf("dial %s: %w", cc.target, err)
 		}
 		go cc.handleSend(conn)
 		go cc.handleReceive(conn)
 	}
+	return nil
 }
 
 // handleSend
