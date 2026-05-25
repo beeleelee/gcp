@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/beeleelee/gcp/asyncio"
 	"github.com/beeleelee/gcp/logger"
 	"github.com/urfave/cli/v2"
 )
@@ -54,6 +56,22 @@ func lookupHosts(hostname string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("hostname %q not found in /etc/hosts", hostname)
+}
+
+func isRemoteDir(ctx context.Context, hostAddr, path string, timeout time.Duration, useChecksum bool) (bool, error) {
+	cc, err := newClient(ctx, hostAddr, 1, timeout, useChecksum)
+	if err != nil {
+		return false, err
+	}
+	res, err := cc.Stat(path)
+	if err != nil {
+		return false, err
+	}
+	statRes := res.msg.(*asyncio.StatRes)
+	if !statRes.Success {
+		return false, fmt.Errorf("stat failed for %s", path)
+	}
+	return statRes.IsDir, nil
 }
 
 func parseRemoteAddr(s string) (hostPort, path string, err error) {
@@ -228,6 +246,17 @@ var cpCmd = &cli.Command{
 			if target == "" || strings.HasSuffix(target, "/") {
 				target = target + filepath.Base(remotePath)
 			}
+
+			isDir, dirErr := isRemoteDir(ctx, hostPort, remotePath, c.Duration("timeout"), c.Bool("checksum"))
+			if dirErr == nil && isDir {
+				if !c.Bool("recursive") {
+					return fmt.Errorf("source is a directory; use -r to copy directories")
+				}
+				return cpDirFromHost(ctx, hostPort, remotePath, target,
+					c.Int64("chunk"), c.Int("batch"), c.Duration("timeout"),
+					c.Int("retry"), c.Bool("checksum"))
+			}
+
 			logger.Log.Debug("downloading file", "host", hostPort, "remote", remotePath, "local", target)
 			return cpOneFileFromHost(ctx, hostPort, remotePath, target, c.Int64("chunk"), c.Int("batch"), c.Duration("timeout"), c.Int("retry"), c.Bool("checksum"))
 

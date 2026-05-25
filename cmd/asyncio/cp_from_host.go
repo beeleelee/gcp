@@ -12,12 +12,12 @@ import (
 	"github.com/beeleelee/gcp/cmd/progressbar"
 )
 
-func cpOneFileFromHost(
+func downloadFile(
 	ctx context.Context,
-	hostAddr, src, target string,
+	cc *copierClient,
+	src, target string,
 	chunkSize int64,
 	batch int,
-	timeout time.Duration,
 	maxRetries int,
 	useChecksum bool,
 ) (err error) {
@@ -29,12 +29,7 @@ func cpOneFileFromHost(
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	cc, err := newClient(ctx, hostAddr, batch, timeout, useChecksum)
-	if err != nil {
-		return
-	}
 
-	// get remote file size with stat (with retries)
 	var (
 		res     clientWrappedMsg
 		statRes *asyncio.StatRes
@@ -55,7 +50,7 @@ func cpOneFileFromHost(
 			backoff := time.Duration(100<<attempt) * time.Millisecond
 			select {
 			case <-ctx.Done():
-				return
+				return ctx.Err()
 			case <-time.After(backoff):
 			}
 		}
@@ -156,4 +151,23 @@ loop:
 	}
 	wg.Wait()
 	return
+}
+
+func cpOneFileFromHost(
+	ctx context.Context,
+	hostAddr, src, target string,
+	chunkSize int64,
+	batch int,
+	timeout time.Duration,
+	maxRetries int,
+	useChecksum bool,
+) (err error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	cc, err := newClient(ctx, hostAddr, batch, timeout, useChecksum)
+	if err != nil {
+		return
+	}
+
+	return downloadFile(ctx, cc, src, target, chunkSize, batch, maxRetries, useChecksum)
 }
