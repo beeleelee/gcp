@@ -84,6 +84,11 @@ func (c *copierServer) process() {
 						c.stat(wmsg.conn, msg)
 					case asyncio.StatResT:
 						// for now, do nothing
+					case asyncio.ReadDirReqT:
+						msg, _ := (wmsg.msg).(*asyncio.ReadDirReq)
+						c.readDir(wmsg.conn, msg)
+					case asyncio.ReadDirResT:
+						// for now, do nothing
 					default:
 						logger.Log.Error("should not be here, unrecognized message type", "wmsg", wmsg)
 					}
@@ -244,6 +249,50 @@ func (c *copierServer) readSuccess(conn gnet.Conn, req *asyncio.ReadReq, data []
 		N:        int64(len(data)),
 		Checksum: checksum,
 	}, data); err != nil {
+		logger.Log.Debug("failed to write message", "err", err)
+	}
+}
+
+func (c *copierServer) readDir(conn gnet.Conn, req *asyncio.ReadDirReq) {
+	entries, err := os.ReadDir(req.Path)
+	if err != nil {
+		logger.Log.Debug("readdir failed", "path", req.Path, "err", err)
+		c.readDirFailed(conn, req)
+		return
+	}
+	c.readDirSuccess(conn, req, entries)
+}
+
+func (c *copierServer) readDirFailed(conn gnet.Conn, req *asyncio.ReadDirReq) {
+	if err := asyncio.WriteMessage(conn, &asyncio.ReadDirRes{
+		ID: req.ID,
+	}, nil); err != nil {
+		logger.Log.Debug("failed to write message", "err", err)
+	}
+}
+
+func (c *copierServer) readDirSuccess(conn gnet.Conn, req *asyncio.ReadDirReq, entries []os.DirEntry) {
+	res := &asyncio.ReadDirRes{
+		ID:      req.ID,
+		Success: true,
+		Entries: make([]asyncio.DirEntry, len(entries)),
+	}
+	for i, e := range entries {
+		info, infoErr := e.Info()
+		if infoErr != nil {
+			res.Entries[i] = asyncio.DirEntry{
+				Name:  e.Name(),
+				IsDir: e.IsDir(),
+			}
+		} else {
+			res.Entries[i] = asyncio.DirEntry{
+				Name:  e.Name(),
+				IsDir: e.IsDir(),
+				Mode:  uint32(info.Mode()),
+			}
+		}
+	}
+	if err := asyncio.WriteMessage(conn, res, nil); err != nil {
 		logger.Log.Debug("failed to write message", "err", err)
 	}
 }

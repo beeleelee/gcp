@@ -219,6 +219,12 @@ func TestGetID(t *testing.T) {
 	if id := (&ReadRes{ID: 15}).GetID(); id != 15 {
 		t.Errorf("ReadRes.GetID = %d", id)
 	}
+	if id := (&ReadDirReq{ID: 16}).GetID(); id != 16 {
+		t.Errorf("ReadDirReq.GetID = %d", id)
+	}
+	if id := (&ReadDirRes{ID: 17}).GetID(); id != 17 {
+		t.Errorf("ReadDirRes.GetID = %d", id)
+	}
 }
 
 func TestTypeConstants(t *testing.T) {
@@ -239,6 +245,12 @@ func TestTypeConstants(t *testing.T) {
 	}
 	if ReadResT != 5 {
 		t.Errorf("ReadResT = %d, want 5", ReadResT)
+	}
+	if ReadDirReqT != 8 {
+		t.Errorf("ReadDirReqT = %d, want 8", ReadDirReqT)
+	}
+	if ReadDirResT != 9 {
+		t.Errorf("ReadDirResT = %d, want 9", ReadDirResT)
 	}
 }
 

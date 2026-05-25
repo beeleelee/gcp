@@ -22,6 +22,8 @@ const (
 	ReadResT
 	StatReqT
 	StatResT
+	ReadDirReqT
+	ReadDirResT
 )
 
 const MessageSize = 4
@@ -87,6 +89,23 @@ type StatRes struct {
 	Size    int64
 	Mode    uint32
 	IsDir   bool
+}
+
+type DirEntry struct {
+	IsDir bool
+	Mode  uint32
+	Name  string
+}
+
+type ReadDirReq struct {
+	ID   int64
+	Path string
+}
+
+type ReadDirRes struct {
+	ID      int64
+	Success bool
+	Entries []DirEntry
 }
 
 var (
@@ -179,6 +198,10 @@ func DecodePre(head []byte) (MSG, uint32, uint32, error) {
 		msg = &StatReq{}
 	case StatResT:
 		msg = &StatRes{}
+	case ReadDirReqT:
+		msg = &ReadDirReq{}
+	case ReadDirResT:
+		msg = &ReadDirRes{}
 	default:
 		return nil, 0, 0, ErrMsgType
 	}

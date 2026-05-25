@@ -10,6 +10,8 @@ var _ MSG = (*ReadReq)(nil)
 var _ MSG = (*ReadRes)(nil)
 var _ MSG = (*StatReq)(nil)
 var _ MSG = (*StatRes)(nil)
+var _ MSG = (*ReadDirReq)(nil)
+var _ MSG = (*ReadDirRes)(nil)
 
 func (m *CreateReq) Type() MessageType {
 	return CreateReqT
@@ -144,5 +146,39 @@ func (m *StatRes) Encode() []byte {
 }
 
 func (m *StatRes) Decode(buf []byte) error {
+	return cbor.Unmarshal(buf, m)
+}
+
+func (m *ReadDirReq) Type() MessageType {
+	return ReadDirReqT
+}
+
+func (m *ReadDirReq) GetID() int64 {
+	return m.ID
+}
+
+func (m *ReadDirReq) Encode() []byte {
+	bs, _ := cbor.Marshal(m)
+	return bs
+}
+
+func (m *ReadDirReq) Decode(buf []byte) error {
+	return cbor.Unmarshal(buf, m)
+}
+
+func (m *ReadDirRes) Type() MessageType {
+	return ReadDirResT
+}
+
+func (m *ReadDirRes) GetID() int64 {
+	return m.ID
+}
+
+func (m *ReadDirRes) Encode() []byte {
+	bs, _ := cbor.Marshal(m)
+	return bs
+}
+
+func (m *ReadDirRes) Decode(buf []byte) error {
 	return cbor.Unmarshal(buf, m)
 }
