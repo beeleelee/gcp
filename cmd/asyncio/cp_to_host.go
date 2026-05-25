@@ -18,14 +18,7 @@ func cpOneFileToHost(
 	maxRetries int,
 	useChecksum bool,
 ) (err error) {
-	// open the src
-	sfd, err := os.Open(src)
-	if err != nil {
-		return
-	}
-	defer sfd.Close()
-	// read file meta data
-	sfinfo, err := sfd.Stat()
+	sfinfo, err := os.Stat(src)
 	if err != nil {
 		return
 	}
@@ -35,21 +28,40 @@ func cpOneFileToHost(
 	if err != nil {
 		return
 	}
+	return uploadFile(ctx, cc, src, target, sfinfo, chunkSize, batch, maxRetries)
+}
 
-	// touch target file
-	_, err = cc.Create(target, sfinfo.Size(), sfinfo.Mode())
+func uploadFile(
+	ctx context.Context,
+	cc *copierClient,
+	srcPath, target string,
+	info os.FileInfo,
+	chunkSize int64,
+	batch int,
+	maxRetries int,
+) error {
+	sfd, err := os.Open(srcPath)
 	if err != nil {
-		return
+		return err
 	}
+	defer sfd.Close()
+
+	_, err = cc.Create(target, info.Size(), info.Mode().Perm())
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	var wg sync.WaitGroup
 	var offset int64
-	remainSize := sfinfo.Size()
+	remainSize := info.Size()
 
 	concurrentCtl := make(chan struct{}, batch)
 	errChan := make(chan error, batch)
 	progressChan := make(chan int64, batch+1)
-	// print progress
-	go progressbar.Progress(ctx, sfinfo.Size(), progressChan, time.Now(), time.Millisecond*200)
+	go progressbar.Progress(ctx, info.Size(), progressChan, time.Now(), time.Millisecond*200)
 
 loop:
 	for remainSize > 0 {
@@ -88,7 +100,7 @@ loop:
 		remainSize -= chus
 	}
 	wg.Wait()
-	return
+	return nil
 }
 
 // uploadFileChunk reads a chunk from the local file and sends it via cc.Write with retries.
