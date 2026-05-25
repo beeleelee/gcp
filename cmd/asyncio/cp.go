@@ -133,6 +133,82 @@ func parseRemoteAddr(s string) (hostPort, path string, err error) {
 	return net.JoinHostPort(host, port), path, nil
 }
 
+func copySingle(
+	ctx context.Context,
+	src, dst string,
+	chunkSize int64,
+	batch int,
+	timeout time.Duration,
+	maxRetries int,
+	useChecksum bool,
+	recursive bool,
+) error {
+	srcRemote := isRemoteAddr(src)
+	dstRemote := isRemoteAddr(dst)
+
+	if !srcRemote {
+		if st, stErr := os.Stat(src); stErr == nil && st.IsDir() {
+			if !recursive {
+				return fmt.Errorf("source is a directory; use -r to copy directories")
+			}
+			if !dstRemote {
+				return errors.New("downloading directories is not yet supported")
+			}
+			hostPort, remotePath, err := parseRemoteAddr(dst)
+			if err != nil {
+				return err
+			}
+			target := remotePath
+			if target == "" || strings.HasSuffix(target, "/") {
+				target = target + filepath.Base(src)
+			}
+			logger.Log.Debug("copying directory", "host", hostPort, "src", src, "dst", target)
+			return cpDirToHost(ctx, hostPort, src, target, chunkSize, batch, timeout, maxRetries, useChecksum)
+		}
+	}
+
+	switch {
+	case srcRemote && !dstRemote:
+		hostPort, remotePath, err := parseRemoteAddr(src)
+		if err != nil {
+			return err
+		}
+		target := dst
+		if target == "" || strings.HasSuffix(target, "/") {
+			target = target + filepath.Base(remotePath)
+		}
+
+		isDir, dirErr := isRemoteDir(ctx, hostPort, remotePath, timeout, useChecksum)
+		if dirErr == nil && isDir {
+			if !recursive {
+				return fmt.Errorf("source is a directory; use -r to copy directories")
+			}
+			return cpDirFromHost(ctx, hostPort, remotePath, target,
+				chunkSize, batch, timeout, maxRetries, useChecksum)
+		}
+
+		logger.Log.Debug("downloading file", "host", hostPort, "remote", remotePath, "local", target)
+		return cpOneFileFromHost(ctx, hostPort, remotePath, target,
+			chunkSize, batch, timeout, maxRetries, useChecksum)
+
+	case !srcRemote && dstRemote:
+		hostPort, remotePath, err := parseRemoteAddr(dst)
+		if err != nil {
+			return err
+		}
+		target := remotePath
+		if target == "" || strings.HasSuffix(target, "/") {
+			target = target + filepath.Base(src)
+		}
+		logger.Log.Debug("uploading file", "host", hostPort, "src", src, "dst", target)
+		return cpOneFileToHost(ctx, hostPort, src, target,
+			chunkSize, batch, timeout, maxRetries, useChecksum)
+
+	default:
+		return errors.New("one path must be local, the other remote")
+	}
+}
+
 var cpCmd = &cli.Command{
 	Name:  "cp",
 	Usage: "",
@@ -174,107 +250,79 @@ var cpCmd = &cli.Command{
 		args := c.Args().Slice()
 
 		if len(args) < 2 {
-			return errors.New("usage: gcp cp <source> <destination>")
+			return errors.New("usage: gcp cp <source>... <destination>")
 		}
 
-		src, dst := args[0], args[1]
+		sources, dst := args[:len(args)-1], args[len(args)-1]
+		srcRemote := isRemoteAddr(sources[0])
+		dstRemote := isRemoteAddr(dst)
+		multiple := len(sources) > 1
 
-		srcRemote, dstRemote := isRemoteAddr(src), isRemoteAddr(dst)
+		for _, s := range sources {
+			if isRemoteAddr(s) != srcRemote {
+				return fmt.Errorf("cannot mix local and remote sources")
+			}
+		}
+		if srcRemote == dstRemote {
+			return errors.New("one path must be local, the other remote")
+		}
+
+		// Expand sources into concrete file list
+		var expanded []string
+		if srcRemote {
+			for _, s := range sources {
+				hostPort, path, pErr := parseRemoteAddr(s)
+				if pErr != nil {
+					return pErr
+				}
+				matches, gErr := expandRemoteSources(ctx, hostPort, path,
+					c.Duration("timeout"), c.Bool("checksum"))
+				if gErr != nil {
+					return gErr
+				}
+				expanded = append(expanded, matches...)
+			}
+		} else {
+			for _, s := range sources {
+				matches, gErr := expandLocalSource(s, c.Bool("recursive"))
+				if gErr != nil {
+					return gErr
+				}
+				expanded = append(expanded, matches...)
+			}
+		}
+
+		if len(expanded) == 0 {
+			return fmt.Errorf("no files matched")
+		}
 
 		if c.Bool("dry-run") {
-			switch {
-			case !srcRemote && dstRemote:
-				st, stErr := os.Stat(src)
-				if stErr != nil {
-					return stErr
+			for _, src := range expanded {
+				if srcRemote {
+					fmt.Printf("dry-run: download %s to %s\n", src, dst)
+				} else {
+					fmt.Printf("dry-run: upload %s to %s\n", src, dst)
 				}
-				if st.IsDir() {
-					if !c.Bool("recursive") {
-						return fmt.Errorf("source is a directory; use -r to copy directories")
-					}
-					fmt.Printf("dry-run: upload directory %s/ to %s\n", src, dst)
-					return filepath.Walk(src, func(path string, info os.FileInfo, walkErr error) error {
-						if walkErr != nil {
-							return walkErr
-						}
-						rel, _ := filepath.Rel(src, path)
-						if info.IsDir() {
-							fmt.Printf("dry-run:   %s/ (dir)\n", rel)
-						} else if info.Mode().IsRegular() {
-							fmt.Printf("dry-run:   %s (%d B)\n", rel, info.Size())
-						}
-						return nil
-					})
-				}
-				fmt.Printf("dry-run: upload %s (%d B) to %s\n", src, st.Size(), dst)
-				return nil
-			case srcRemote && !dstRemote:
-				fmt.Printf("dry-run: download %s to %s\n", src, dst)
-				return nil
-			default:
-				return errors.New("usage: gcp cp <source> <destination>: one must be a local path, the other a remote address (host:port/path)")
 			}
+			return nil
 		}
 
-		if !srcRemote {
-			if st, stErr := os.Stat(src); stErr == nil && st.IsDir() {
-				if !c.Bool("recursive") {
-					return fmt.Errorf("source is a directory; use -r to copy directories")
-				}
-				if !dstRemote {
-					return errors.New("downloading directories is not yet supported")
-				}
-				hostPort, remotePath, err := parseRemoteAddr(dst)
-				if err != nil {
-					return err
-				}
-				target := remotePath
-				if target == "" || strings.HasSuffix(target, "/") {
-					target = target + filepath.Base(src)
-				}
-				logger.Log.Debug("copying directory", "host", hostPort, "src", src, "dst", target)
-				return cpDirToHost(ctx, hostPort, src, target, c.Int64("chunk"), c.Int("batch"), c.Duration("timeout"), c.Int("retry"), c.Bool("checksum"))
-			}
-		}
-
-		switch {
-		case srcRemote && !dstRemote:
-			hostPort, remotePath, err := parseRemoteAddr(src)
-			if err != nil {
-				return err
-			}
+		for _, src := range expanded {
 			target := dst
-			if target == "" || strings.HasSuffix(target, "/") {
-				target = target + filepath.Base(remotePath)
-			}
-
-			isDir, dirErr := isRemoteDir(ctx, hostPort, remotePath, c.Duration("timeout"), c.Bool("checksum"))
-			if dirErr == nil && isDir {
-				if !c.Bool("recursive") {
-					return fmt.Errorf("source is a directory; use -r to copy directories")
+			if multiple {
+				if srcRemote {
+					_, rPath, _ := parseRemoteAddr(src)
+					target = filepath.Join(dst, filepath.Base(rPath))
+				} else {
+					target = filepath.Join(dst, filepath.Base(src))
 				}
-				return cpDirFromHost(ctx, hostPort, remotePath, target,
-					c.Int64("chunk"), c.Int("batch"), c.Duration("timeout"),
-					c.Int("retry"), c.Bool("checksum"))
 			}
-
-			logger.Log.Debug("downloading file", "host", hostPort, "remote", remotePath, "local", target)
-			return cpOneFileFromHost(ctx, hostPort, remotePath, target, c.Int64("chunk"), c.Int("batch"), c.Duration("timeout"), c.Int("retry"), c.Bool("checksum"))
-
-		case !srcRemote && dstRemote:
-			hostPort, remotePath, err := parseRemoteAddr(dst)
-			if err != nil {
+			if err := copySingle(ctx, src, target,
+				c.Int64("chunk"), c.Int("batch"), c.Duration("timeout"),
+				c.Int("retry"), c.Bool("checksum"), c.Bool("recursive")); err != nil {
 				return err
 			}
-			target := remotePath
-			if target == "" || strings.HasSuffix(target, "/") {
-				target = target + filepath.Base(src)
-			}
-			logger.Log.Debug("uploading file", "host", hostPort, "src", src, "dst", target)
-			return cpOneFileToHost(ctx, hostPort, src, target, c.Int64("chunk"), c.Int("batch"), c.Duration("timeout"), c.Int("retry"), c.Bool("checksum"))
-
-		default:
-			return errors.New("usage: gcp cp <source> <destination>: one must be a local path, the other a remote address (host:port/path)")
 		}
+		return nil
 	},
 }
