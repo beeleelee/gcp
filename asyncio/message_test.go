@@ -36,7 +36,7 @@ func TestEncodeDecodePreRoundTrip(t *testing.T) {
 		{"WriteRes-success", &WriteRes{ID: 5, Success: true, N: 4096}, 0},
 		{"WriteRes-fail", &WriteRes{ID: 6, Success: false, N: 0}, 0},
 		{"ReadReq", &ReadReq{ID: 7, Path: "/tmp/f", Offset: 0, Size: 4096}, 0},
-		{"ReadRes", &ReadRes{ID: 8, Success: true, N: 4096, FileSize: 65536, Checksum: 0}, 4096},
+		{"ReadRes", &ReadRes{ID: 8, Success: true, N: 4096, Checksum: 0}, 4096},
 	}
 
 	for _, tc := range tests {
@@ -162,7 +162,7 @@ func TestReadReqCBORRoundTrip(t *testing.T) {
 }
 
 func TestReadResCBORRoundTrip(t *testing.T) {
-	res := &ReadRes{ID: 11, Success: true, N: 32768, FileSize: 1048576, Checksum: 12345678}
+	res := &ReadRes{ID: 11, Success: true, N: 32768, Checksum: 12345678}
 	bs := res.Encode()
 	var decoded ReadRes
 	if err := decoded.Decode(bs); err != nil {

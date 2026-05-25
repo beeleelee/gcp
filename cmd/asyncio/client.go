@@ -360,3 +360,22 @@ func (cc *copierClient) Read(target string, off int64, size int64) (clientWrappe
 		return clientWrappedMsg{}, cc.ctx.Err()
 	}
 }
+
+func (cc *copierClient) Stat(target string) (clientWrappedMsg, error) {
+	ch := make(chan clientWrappedMsg)
+	cc.msgIn <- clientRequestMsg{
+		clientWrappedMsg: clientWrappedMsg{
+			msg: &asyncio.StatReq{
+				ID:   cc.genMsgID(),
+				Path: target,
+			},
+		},
+		resChan: ch,
+	}
+	select {
+	case res := <-ch:
+		return res, nil
+	case <-cc.ctx.Done():
+		return clientWrappedMsg{}, cc.ctx.Err()
+	}
+}

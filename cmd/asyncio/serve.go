@@ -79,6 +79,11 @@ func (c *copierServer) process() {
 						c.read(wmsg.conn, msg)
 					case asyncio.ReadResT:
 						// for now, do nothing
+					case asyncio.StatReqT:
+						msg, _ := (wmsg.msg).(*asyncio.StatReq)
+						c.stat(wmsg.conn, msg)
+					case asyncio.StatResT:
+						// for now, do nothing
 					default:
 						logger.Log.Error("should not be here, unrecognized message type", "wmsg", wmsg)
 					}
@@ -237,9 +242,39 @@ func (c *copierServer) readSuccess(conn gnet.Conn, req *asyncio.ReadReq, data []
 		ID:       req.ID,
 		Success:  true,
 		N:        int64(len(data)),
-		FileSize: fileSize,
 		Checksum: checksum,
 	}, data); err != nil {
+		logger.Log.Debug("failed to write message", "err", err)
+	}
+}
+
+func (c *copierServer) stat(conn gnet.Conn, req *asyncio.StatReq) {
+	info, err := os.Stat(req.Path)
+	if err != nil {
+		logger.Log.Debug("stat failed", "path", req.Path, "err", err)
+		c.statFailed(conn, req)
+		return
+	}
+	c.statSuccess(conn, req, info)
+}
+
+func (c *copierServer) statFailed(conn gnet.Conn, req *asyncio.StatReq) {
+	if err := asyncio.WriteMessage(conn, &asyncio.StatRes{
+		ID:      req.ID,
+		Success: false,
+	}, nil); err != nil {
+		logger.Log.Debug("failed to write message", "err", err)
+	}
+}
+
+func (c *copierServer) statSuccess(conn gnet.Conn, req *asyncio.StatReq, info os.FileInfo) {
+	if err := asyncio.WriteMessage(conn, &asyncio.StatRes{
+		ID:      req.ID,
+		Success: true,
+		Size:    info.Size(),
+		Mode:    uint32(info.Mode()),
+		IsDir:   info.IsDir(),
+	}, nil); err != nil {
 		logger.Log.Debug("failed to write message", "err", err)
 	}
 }

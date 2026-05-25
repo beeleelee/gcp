@@ -1,6 +1,6 @@
 # gcp — agent instructions
 
-Copy files from local to a remote host over TCP. Two implementations in one repo.
+Copy files between local and hosts.
 
 > **Note:** The `blockio` (gRPC) module is **deprecated**. It is kept for reference but will not receive new features. Use the `gcp` (asyncio) module instead.
 
@@ -45,6 +45,9 @@ Asyncio (default):
 
 # copy directory recursively
 ./bin/gcp cp -r ./mydir host:1717/dst
+
+# dry-run (show what would be transferred without doing it)
+./bin/gcp cp --dry-run ./src.txt host:1717/dst
 ```
 
 Blockio (gRPC variant, deprecated):
@@ -71,6 +74,7 @@ Log level: `--level` or `-L` flag (`error` default, accepts `info`, `debug`, etc
 | `--retry`     | 3       | max chunk transfer retries             |
 | `--checksum`  | true    | enable CRC-32 chunk integrity checks   |
 | `--recursive, -r` | false | copy directories recursively           |
+| `--dry-run`       | false | show transfer plan without doing it     |
 
 ## Architecture notes
 

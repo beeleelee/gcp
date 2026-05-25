@@ -34,19 +34,19 @@ func cpOneFileFromHost(
 		return
 	}
 
-	// first read to get file size (with retries)
+	// get remote file size with stat (with retries)
 	var (
 		res     clientWrappedMsg
-		readRes *asyncio.ReadRes
+		statRes *asyncio.StatRes
 	)
 	for attempt := 0; attempt <= maxRetries; attempt++ {
-		res, err = cc.Read(src, 0, chunkSize)
+		res, err = cc.Stat(src)
 		if err == nil {
-			readRes = res.msg.(*asyncio.ReadRes)
-			if !readRes.Success {
-				err = fmt.Errorf("server returned success=false for first read")
-			} else if useChecksum && readRes.Checksum != 0 && crc32.ChecksumIEEE(res.payload) != readRes.Checksum {
-				err = fmt.Errorf("checksum mismatch for first read at offset 0")
+			statRes = res.msg.(*asyncio.StatRes)
+			if !statRes.Success {
+				err = fmt.Errorf("server returned success=false for stat")
+			} else if statRes.IsDir {
+				err = fmt.Errorf("path is a directory")
 			} else {
 				break
 			}
@@ -63,21 +63,17 @@ func cpOneFileFromHost(
 	if err != nil {
 		return
 	}
-	_, err = tfd.WriteAt(res.payload, 0)
-	if err != nil {
-		return
-	}
 
-	fileSize := readRes.FileSize
-	var offset int64 = int64(len(res.payload))
-	remainSize := fileSize - offset
+	fileSize := statRes.Size
+	var offset int64
+	remainSize := fileSize
 
 	var wg sync.WaitGroup
 	concurrentCtl := make(chan struct{}, batch)
 	errChan := make(chan error, batch)
 	progressChan := make(chan int64, batch+1)
 	go progressbar.Progress(ctx, fileSize, progressChan, time.Now(), time.Millisecond*200)
-	progressChan <- int64(len(res.payload))
+	progressChan <- 0
 
 loop:
 	for remainSize > 0 {

@@ -8,6 +8,8 @@ var _ MSG = (*WriteReq)(nil)
 var _ MSG = (*WriteRes)(nil)
 var _ MSG = (*ReadReq)(nil)
 var _ MSG = (*ReadRes)(nil)
+var _ MSG = (*StatReq)(nil)
+var _ MSG = (*StatRes)(nil)
 
 func (m *CreateReq) Type() MessageType {
 	return CreateReqT
@@ -108,5 +110,39 @@ func (m *ReadRes) Encode() []byte {
 }
 
 func (m *ReadRes) Decode(buf []byte) error {
+	return cbor.Unmarshal(buf, m)
+}
+
+func (m *StatReq) Type() MessageType {
+	return StatReqT
+}
+
+func (m *StatReq) GetID() int64 {
+	return m.ID
+}
+
+func (m *StatReq) Encode() []byte {
+	bs, _ := cbor.Marshal(m)
+	return bs
+}
+
+func (m *StatReq) Decode(buf []byte) error {
+	return cbor.Unmarshal(buf, m)
+}
+
+func (m *StatRes) Type() MessageType {
+	return StatResT
+}
+
+func (m *StatRes) GetID() int64 {
+	return m.ID
+}
+
+func (m *StatRes) Encode() []byte {
+	bs, _ := cbor.Marshal(m)
+	return bs
+}
+
+func (m *StatRes) Decode(buf []byte) error {
 	return cbor.Unmarshal(buf, m)
 }

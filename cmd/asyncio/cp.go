@@ -144,6 +144,10 @@ var cpCmd = &cli.Command{
 			Name:  "recursive, r",
 			Usage: "copy directories recursively",
 		},
+		&cli.BoolFlag{
+			Name:  "dry-run",
+			Usage: "show what would be transferred without doing it",
+		},
 	},
 	Action: func(c *cli.Context) (err error) {
 		ctx := c.Context
@@ -156,6 +160,41 @@ var cpCmd = &cli.Command{
 		src, dst := args[0], args[1]
 
 		srcRemote, dstRemote := isRemoteAddr(src), isRemoteAddr(dst)
+
+		if c.Bool("dry-run") {
+			switch {
+			case !srcRemote && dstRemote:
+				st, stErr := os.Stat(src)
+				if stErr != nil {
+					return stErr
+				}
+				if st.IsDir() {
+					if !c.Bool("recursive") {
+						return fmt.Errorf("source is a directory; use -r to copy directories")
+					}
+					fmt.Printf("dry-run: upload directory %s/ to %s\n", src, dst)
+					return filepath.Walk(src, func(path string, info os.FileInfo, walkErr error) error {
+						if walkErr != nil {
+							return walkErr
+						}
+						rel, _ := filepath.Rel(src, path)
+						if info.IsDir() {
+							fmt.Printf("dry-run:   %s/ (dir)\n", rel)
+						} else if info.Mode().IsRegular() {
+							fmt.Printf("dry-run:   %s (%d B)\n", rel, info.Size())
+						}
+						return nil
+					})
+				}
+				fmt.Printf("dry-run: upload %s (%d B) to %s\n", src, st.Size(), dst)
+				return nil
+			case srcRemote && !dstRemote:
+				fmt.Printf("dry-run: download %s to %s\n", src, dst)
+				return nil
+			default:
+				return errors.New("usage: gcp cp <source> <destination>: one must be a local path, the other a remote address (host:port/path)")
+			}
+		}
 
 		if !srcRemote {
 			if st, stErr := os.Stat(src); stErr == nil && st.IsDir() {

@@ -1,6 +1,6 @@
 # gcp
 
-Copy files from local to a remote host over TCP. Two implementations in one repo.
+Copy files between local and hosts.
 
 > **Note:** The `blockio` (gRPC) module is **deprecated**. It is kept for reference but will not receive new features. Use the `gcp` (asyncio) module instead.
 
