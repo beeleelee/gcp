@@ -19,6 +19,7 @@ func cpDirFromHost(
 	timeout time.Duration,
 	maxRetries int,
 	useChecksum bool,
+	useSha256 bool,
 ) error {
 	cc, err := newClient(ctx, hostAddr, batch, timeout, useChecksum)
 	if err != nil {
@@ -27,7 +28,7 @@ func cpDirFromHost(
 	defer cc.Close()
 
 	return walkRemoteDir(ctx, cc, srcDir, target,
-		chunkSize, batch, maxRetries, useChecksum)
+		chunkSize, batch, maxRetries, useChecksum, useSha256)
 }
 
 func walkRemoteDir(
@@ -38,6 +39,7 @@ func walkRemoteDir(
 	batch int,
 	maxRetries int,
 	useChecksum bool,
+	useSha256 bool,
 ) error {
 	if err := os.MkdirAll(target, 0755); err != nil {
 		return err
@@ -58,13 +60,13 @@ func walkRemoteDir(
 
 		if entry.IsDir {
 			if err := walkRemoteDir(ctx, cc, remotePath, localPath,
-				chunkSize, batch, maxRetries, useChecksum); err != nil {
+				chunkSize, batch, maxRetries, useChecksum, useSha256); err != nil {
 				return err
 			}
 		} else {
 			logger.Log.Debug("downloading file", "src", remotePath, "dst", localPath)
 			if err := downloadFile(ctx, cc, remotePath, localPath,
-				chunkSize, batch, maxRetries, useChecksum); err != nil {
+				chunkSize, batch, maxRetries, useChecksum, useSha256); err != nil {
 				return err
 			}
 		}

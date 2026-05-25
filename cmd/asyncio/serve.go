@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"hash/crc32"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -88,6 +90,11 @@ func (c *copierServer) process() {
 						msg, _ := (wmsg.msg).(*asyncio.ReadDirReq)
 						c.readDir(wmsg.conn, msg)
 					case asyncio.ReadDirResT:
+						// for now, do nothing
+					case asyncio.HashReqT:
+						msg, _ := (wmsg.msg).(*asyncio.HashReq)
+						c.hash(wmsg.conn, msg)
+					case asyncio.HashResT:
 						// for now, do nothing
 					default:
 						logger.Log.Error("should not be here, unrecognized message type", "wmsg", wmsg)
@@ -336,6 +343,40 @@ func (c *copierServer) writeSuccess(conn gnet.Conn, req *asyncio.WriteReq, n int
 		N:       int32(n),
 	}, nil); err != nil {
 		logger.Log.Debug("failed to write message", "err", err)
+	}
+}
+
+func (c *copierServer) hash(conn gnet.Conn, req *asyncio.HashReq) {
+	fd, err := os.Open(req.Path)
+	if err != nil {
+		logger.Log.Debug("hash: failed to open file", "path", req.Path, "err", err)
+		c.hashFailed(conn, req)
+		return
+	}
+	defer fd.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, fd); err != nil {
+		logger.Log.Debug("hash: failed to read file", "err", err)
+		c.hashFailed(conn, req)
+		return
+	}
+
+	if err := asyncio.WriteMessage(conn, &asyncio.HashRes{
+		ID:      req.ID,
+		Success: true,
+		Hash:    h.Sum(nil),
+	}, nil); err != nil {
+		logger.Log.Debug("hash: failed to write response", "err", err)
+	}
+}
+
+func (c *copierServer) hashFailed(conn gnet.Conn, req *asyncio.HashReq) {
+	if err := asyncio.WriteMessage(conn, &asyncio.HashRes{
+		ID:      req.ID,
+		Success: false,
+	}, nil); err != nil {
+		logger.Log.Debug("hash: failed to write message", "err", err)
 	}
 }
 

@@ -182,6 +182,35 @@ func TestEncodeMsgPayloadSizeInHeader(t *testing.T) {
 	}
 }
 
+func TestHashReqCBORRoundTrip(t *testing.T) {
+	req := &HashReq{ID: 20, Path: "/remote/f"}
+	bs := req.Encode()
+	var decoded HashReq
+	if err := decoded.Decode(bs); err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if decoded != *req {
+		t.Errorf("round-trip mismatch: %+v", decoded)
+	}
+}
+
+func TestHashResCBORRoundTrip(t *testing.T) {
+	res := &HashRes{ID: 21, Success: true, Hash: []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31}}
+	bs := res.Encode()
+	var decoded HashRes
+	if err := decoded.Decode(bs); err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if decoded.ID != res.ID || decoded.Success != res.Success || len(decoded.Hash) != len(res.Hash) {
+		t.Errorf("round-trip mismatch: %+v", decoded)
+	}
+	for i := range res.Hash {
+		if decoded.Hash[i] != res.Hash[i] {
+			t.Errorf("Hash byte %d: got %d, want %d", i, decoded.Hash[i], res.Hash[i])
+		}
+	}
+}
+
 func TestDecodePreShortHead(t *testing.T) {
 	_, _, _, err := DecodePre([]byte{0xA8, 0xD5})
 	if err != ErrHeadSize {
@@ -225,6 +254,12 @@ func TestGetID(t *testing.T) {
 	if id := (&ReadDirRes{ID: 17}).GetID(); id != 17 {
 		t.Errorf("ReadDirRes.GetID = %d", id)
 	}
+	if id := (&HashReq{ID: 18}).GetID(); id != 18 {
+		t.Errorf("HashReq.GetID = %d", id)
+	}
+	if id := (&HashRes{ID: 19}).GetID(); id != 19 {
+		t.Errorf("HashRes.GetID = %d", id)
+	}
 }
 
 func TestTypeConstants(t *testing.T) {
@@ -251,6 +286,12 @@ func TestTypeConstants(t *testing.T) {
 	}
 	if ReadDirResT != 9 {
 		t.Errorf("ReadDirResT = %d, want 9", ReadDirResT)
+	}
+	if HashReqT != 10 {
+		t.Errorf("HashReqT = %d, want 10", HashReqT)
+	}
+	if HashResT != 11 {
+		t.Errorf("HashResT = %d, want 11", HashResT)
 	}
 }
 

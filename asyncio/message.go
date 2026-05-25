@@ -23,6 +23,8 @@ const (
 	StatResT
 	ReadDirReqT
 	ReadDirResT
+	HashReqT
+	HashResT
 )
 
 const MessageSize = 4
@@ -105,6 +107,17 @@ type ReadDirRes struct {
 	ID      int64
 	Success bool
 	Entries []DirEntry
+}
+
+type HashReq struct {
+	ID   int64
+	Path string
+}
+
+type HashRes struct {
+	ID      int64
+	Success bool
+	Hash    []byte
 }
 
 // PacketReader is the interface that wraps Peek and Discard,
@@ -210,6 +223,10 @@ func DecodePre(head []byte) (MSG, uint32, uint32, error) {
 		msg = &ReadDirReq{}
 	case ReadDirResT:
 		msg = &ReadDirRes{}
+	case HashReqT:
+		msg = &HashReq{}
+	case HashResT:
+		msg = &HashRes{}
 	default:
 		return nil, 0, 0, ErrMsgType
 	}

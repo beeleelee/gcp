@@ -142,6 +142,7 @@ func copySingle(
 	maxRetries int,
 	useChecksum bool,
 	recursive bool,
+	useSha256 bool,
 ) error {
 	srcRemote := isRemoteAddr(src)
 	dstRemote := isRemoteAddr(dst)
@@ -163,7 +164,7 @@ func copySingle(
 				target = target + filepath.Base(src)
 			}
 			logger.Log.Debug("copying directory", "host", hostPort, "src", src, "dst", target)
-			return cpDirToHost(ctx, hostPort, src, target, chunkSize, batch, timeout, maxRetries, useChecksum)
+			return cpDirToHost(ctx, hostPort, src, target, chunkSize, batch, timeout, maxRetries, useChecksum, useSha256)
 		}
 	}
 
@@ -184,12 +185,12 @@ func copySingle(
 				return fmt.Errorf("source is a directory; use -r to copy directories")
 			}
 			return cpDirFromHost(ctx, hostPort, remotePath, target,
-				chunkSize, batch, timeout, maxRetries, useChecksum)
+				chunkSize, batch, timeout, maxRetries, useChecksum, useSha256)
 		}
 
 		logger.Log.Debug("downloading file", "host", hostPort, "remote", remotePath, "local", target)
 		return cpOneFileFromHost(ctx, hostPort, remotePath, target,
-			chunkSize, batch, timeout, maxRetries, useChecksum)
+			chunkSize, batch, timeout, maxRetries, useChecksum, useSha256)
 
 	case !srcRemote && dstRemote:
 		hostPort, remotePath, err := parseRemoteAddr(dst)
@@ -202,7 +203,7 @@ func copySingle(
 		}
 		logger.Log.Debug("uploading file", "host", hostPort, "src", src, "dst", target)
 		return cpOneFileToHost(ctx, hostPort, src, target,
-			chunkSize, batch, timeout, maxRetries, useChecksum)
+			chunkSize, batch, timeout, maxRetries, useChecksum, useSha256)
 
 	default:
 		return errors.New("one path must be local, the other remote")
@@ -243,6 +244,11 @@ var cpCmd = &cli.Command{
 		&cli.BoolFlag{
 			Name:  "dry-run",
 			Usage: "show what would be transferred without doing it",
+		},
+		&cli.BoolFlag{
+			Name:  "sha256",
+			Value: true,
+			Usage: "verify file integrity with SHA-256 after transfer",
 		},
 	},
 	Action: func(c *cli.Context) (err error) {
@@ -319,7 +325,7 @@ var cpCmd = &cli.Command{
 			}
 			if err := copySingle(ctx, src, target,
 				c.Int64("chunk"), c.Int("batch"), c.Duration("timeout"),
-				c.Int("retry"), c.Bool("checksum"), c.Bool("recursive")); err != nil {
+				c.Int("retry"), c.Bool("checksum"), c.Bool("recursive"), c.Bool("sha256")); err != nil {
 				return err
 			}
 		}

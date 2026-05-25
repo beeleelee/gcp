@@ -2,16 +2,150 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
+	"github.com/beeleelee/gcp/asyncio"
 	"github.com/beeleelee/gcp/cmd/progressbar"
+	"github.com/beeleelee/gcp/logger"
 )
+
+type resumeState struct {
+	Version    int     `json:"version"`
+	SourceSize int64   `json:"source_size"`
+	ChunkSize  int64   `json:"chunk_size"`
+	Completed  []int64 `json:"completed"`
+
+	path         string
+	completedSet map[int64]struct{}
+	pending      []int64
+	batch        int
+	mu           sync.Mutex
+}
+
+func stateFilePath(srcPath, targetPath string) string {
+	h := sha256.Sum256([]byte(srcPath + ":" + targetPath))
+	name := fmt.Sprintf("gcp-resume-%s.json", hex.EncodeToString(h[:16]))
+	return filepath.Join(os.TempDir(), "gcp", name)
+}
+
+func loadResumeState(srcPath, targetPath string, sourceSize, chunkSize int64, batch int) *resumeState {
+	p := stateFilePath(srcPath, targetPath)
+	f, err := os.Open(p)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	var s resumeState
+	if err := json.NewDecoder(f).Decode(&s); err != nil {
+		return nil
+	}
+	if s.Version != 1 || s.SourceSize != sourceSize || s.ChunkSize != chunkSize {
+		return nil
+	}
+
+	s.path = p
+	s.batch = batch
+	s.completedSet = make(map[int64]struct{}, len(s.Completed))
+	for _, off := range s.Completed {
+		s.completedSet[off] = struct{}{}
+	}
+	return &s
+}
+
+func saveResumeState(s *resumeState) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	dir := filepath.Dir(s.path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+
+	s.Completed = make([]int64, 0, len(s.completedSet))
+	for off := range s.completedSet {
+		s.Completed = append(s.Completed, off)
+	}
+	sort.Slice(s.Completed, func(i, j int) bool { return s.Completed[i] < s.Completed[j] })
+
+	tmp := s.path + ".tmp"
+	f, err := os.Create(tmp)
+	if err != nil {
+		return err
+	}
+	if err := json.NewEncoder(f).Encode(s); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return os.Rename(tmp, s.path)
+}
+
+func deleteResumeState(s *resumeState) {
+	if s == nil {
+		return
+	}
+	os.Remove(s.path)
+}
+
+func addCompletedOffset(s *resumeState, offset int64) error {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	s.completedSet[offset] = struct{}{}
+	s.pending = append(s.pending, offset)
+	shouldFlush := len(s.pending) >= s.batch
+	s.mu.Unlock()
+
+	if shouldFlush {
+		return saveResumeState(s)
+	}
+	return nil
+}
+
+func flushResumeState(s *resumeState) error {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	hasPending := len(s.pending) > 0
+	s.mu.Unlock()
+	if hasPending {
+		return saveResumeState(s)
+	}
+	return nil
+}
+
+func isCompleted(s *resumeState, offset int64) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	_, ok := s.completedSet[offset]
+	s.mu.Unlock()
+	return ok
+}
 
 func processChunks(
 	ctx context.Context,
 	fileSize, chunkSize int64,
+	startOffset int64,
 	batch int,
+	state *resumeState,
 	fn func(context.Context, int64, int64, chan<- int64) error,
 ) error {
 	ctx, cancel := context.WithCancel(ctx)
@@ -22,10 +156,10 @@ func processChunks(
 	errChan := make(chan error, batch)
 	progressChan := make(chan int64, batch+1)
 	go progressbar.Progress(ctx, fileSize, progressChan, time.Now(), time.Millisecond*200)
-	progressChan <- 0
+	progressChan <- startOffset
 
-	var offset int64
-	remainSize := fileSize
+	offset := startOffset
+	remainSize := fileSize - startOffset
 
 	for remainSize > 0 {
 		select {
@@ -38,6 +172,14 @@ func processChunks(
 		if remainSize < size {
 			size = remainSize
 		}
+
+		if isCompleted(state, offset) {
+			progressChan <- size
+			offset += size
+			remainSize -= size
+			continue
+		}
+
 		wg.Add(1)
 		go func(off, sz int64) {
 			defer wg.Done()
@@ -60,10 +202,51 @@ func processChunks(
 	}
 	wg.Wait()
 
+	if err := flushResumeState(state); err != nil {
+		logger.Log.Debug("failed to flush resume state", "err", err)
+	}
+
 	select {
 	case err := <-errChan:
 		return err
 	default:
 		return nil
 	}
+}
+
+func verifyFileHash(ctx context.Context, cc *copierClient, remotePath, localPath string) error {
+	logger.Log.Debug("verifying file hash", "remote", remotePath, "local", localPath)
+
+	res, err := cc.Hash(remotePath)
+	if err != nil {
+		return fmt.Errorf("hash request failed: %w", err)
+	}
+	hashRes := res.msg.(*asyncio.HashRes)
+	if !hashRes.Success {
+		return fmt.Errorf("server returned success=false for hash request")
+	}
+
+	fd, err := os.Open(localPath)
+	if err != nil {
+		return fmt.Errorf("cannot open local file for hash: %w", err)
+	}
+	defer fd.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, fd); err != nil {
+		return fmt.Errorf("cannot read local file for hash: %w", err)
+	}
+	localHash := h.Sum(nil)
+
+	if len(hashRes.Hash) != len(localHash) {
+		return fmt.Errorf("hash length mismatch: server=%d local=%d", len(hashRes.Hash), len(localHash))
+	}
+	for i := range localHash {
+		if hashRes.Hash[i] != localHash[i] {
+			return fmt.Errorf("SHA-256 mismatch: file may be corrupted")
+		}
+	}
+
+	logger.Log.Debug("hash verification passed")
+	return nil
 }

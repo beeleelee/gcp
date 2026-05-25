@@ -12,6 +12,8 @@ var _ MSG = (*StatReq)(nil)
 var _ MSG = (*StatRes)(nil)
 var _ MSG = (*ReadDirReq)(nil)
 var _ MSG = (*ReadDirRes)(nil)
+var _ MSG = (*HashReq)(nil)
+var _ MSG = (*HashRes)(nil)
 
 func (m *CreateReq) Type() MessageType {
 	return CreateReqT
@@ -180,5 +182,39 @@ func (m *ReadDirRes) Encode() []byte {
 }
 
 func (m *ReadDirRes) Decode(buf []byte) error {
+	return cbor.Unmarshal(buf, m)
+}
+
+func (m *HashReq) Type() MessageType {
+	return HashReqT
+}
+
+func (m *HashReq) GetID() int64 {
+	return m.ID
+}
+
+func (m *HashReq) Encode() []byte {
+	bs, _ := cbor.Marshal(m)
+	return bs
+}
+
+func (m *HashReq) Decode(buf []byte) error {
+	return cbor.Unmarshal(buf, m)
+}
+
+func (m *HashRes) Type() MessageType {
+	return HashResT
+}
+
+func (m *HashRes) GetID() int64 {
+	return m.ID
+}
+
+func (m *HashRes) Encode() []byte {
+	bs, _ := cbor.Marshal(m)
+	return bs
+}
+
+func (m *HashRes) Decode(buf []byte) error {
 	return cbor.Unmarshal(buf, m)
 }

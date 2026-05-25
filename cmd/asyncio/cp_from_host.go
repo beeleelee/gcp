@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/beeleelee/gcp/asyncio"
+	"github.com/beeleelee/gcp/logger"
 )
 
 func downloadFile(
@@ -18,13 +19,8 @@ func downloadFile(
 	batch int,
 	maxRetries int,
 	useChecksum bool,
+	useSha256 bool,
 ) error {
-	tfd, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
-	if err != nil {
-		return err
-	}
-	defer tfd.Close()
-
 	var (
 		res     clientWrappedMsg
 		statRes *asyncio.StatRes
@@ -56,7 +52,30 @@ func downloadFile(
 	}
 
 	fileSize := statRes.Size
-	return processChunks(ctx, fileSize, chunkSize, batch,
+	state := loadResumeState(src, target, fileSize, chunkSize, batch)
+
+	var tfd *os.File
+	if state == nil {
+		var err error
+		tfd, err = os.OpenFile(target, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
+		if err != nil {
+			return err
+		}
+		logger.Log.Debug("download: fresh transfer, state not found")
+	} else {
+		var err error
+		tfd, err = os.OpenFile(target, os.O_RDWR, 0644)
+		if err != nil {
+			return err
+		}
+		logger.Log.Debug("download: resuming transfer", "completed", len(state.Completed))
+	}
+	defer tfd.Close()
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	err := processChunks(ctx, fileSize, chunkSize, 0, batch, state,
 		func(ctx context.Context, offset, size int64, progressChan chan<- int64) error {
 			var (
 				res     clientWrappedMsg
@@ -100,9 +119,24 @@ func downloadFile(
 			case progressChan <- int64(len(res.payload)):
 			case <-ctx.Done():
 			}
+			if err := addCompletedOffset(state, offset); err != nil {
+				logger.Log.Debug("download: failed to save resume state", "err", err)
+			}
 			return nil
 		},
 	)
+	if err != nil {
+		return err
+	}
+
+	if useSha256 {
+		if err := verifyFileHash(ctx, cc, src, target); err != nil {
+			return err
+		}
+	}
+
+	deleteResumeState(state)
+	return nil
 }
 
 func cpOneFileFromHost(
@@ -113,6 +147,7 @@ func cpOneFileFromHost(
 	timeout time.Duration,
 	maxRetries int,
 	useChecksum bool,
+	useSha256 bool,
 ) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -121,5 +156,5 @@ func cpOneFileFromHost(
 		return
 	}
 
-	return downloadFile(ctx, cc, src, target, chunkSize, batch, maxRetries, useChecksum)
+	return downloadFile(ctx, cc, src, target, chunkSize, batch, maxRetries, useChecksum, useSha256)
 }
