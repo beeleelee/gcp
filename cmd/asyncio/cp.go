@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/beeleelee/gcp/logger"
 	"github.com/urfave/cli/v2"
 )
 
@@ -212,8 +213,7 @@ var cpCmd = &cli.Command{
 				if target == "" || strings.HasSuffix(target, "/") {
 					target = target + filepath.Base(src)
 				}
-				fmt.Println(hostPort)
-				fmt.Println(src, target)
+				logger.Log.Debug("copying directory", "host", hostPort, "src", src, "dst", target)
 				return cpDirToHost(ctx, hostPort, src, target, c.Int64("chunk"), c.Int("batch"), c.Duration("timeout"), c.Int("retry"), c.Bool("checksum"))
 			}
 		}
@@ -228,8 +228,7 @@ var cpCmd = &cli.Command{
 			if target == "" || strings.HasSuffix(target, "/") {
 				target = target + filepath.Base(remotePath)
 			}
-			fmt.Println(hostPort)
-			fmt.Println("remote:", remotePath, "local:", target)
+			logger.Log.Debug("downloading file", "host", hostPort, "remote", remotePath, "local", target)
 			return cpOneFileFromHost(ctx, hostPort, remotePath, target, c.Int64("chunk"), c.Int("batch"), c.Duration("timeout"), c.Int("retry"), c.Bool("checksum"))
 
 		case !srcRemote && dstRemote:
@@ -241,8 +240,7 @@ var cpCmd = &cli.Command{
 			if target == "" || strings.HasSuffix(target, "/") {
 				target = target + filepath.Base(src)
 			}
-			fmt.Println(hostPort)
-			fmt.Println(src, target)
+			logger.Log.Debug("uploading file", "host", hostPort, "src", src, "dst", target)
 			return cpOneFileToHost(ctx, hostPort, src, target, c.Int64("chunk"), c.Int("batch"), c.Duration("timeout"), c.Int("retry"), c.Bool("checksum"))
 
 		default:
