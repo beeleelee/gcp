@@ -22,6 +22,7 @@ func cpDirToHost(
 	if err != nil {
 		return err
 	}
+	defer cc.Close()
 
 	return filepath.Walk(srcDir, func(path string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil {

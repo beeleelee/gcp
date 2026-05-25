@@ -38,6 +38,7 @@ type clientRequestMsg struct {
 // receiveHandle - channel that send messages to processMsg() from connections
 type copierClient struct {
 	ctx           context.Context
+	cancel        context.CancelFunc
 	target        string
 	id            int64
 	batch         int
@@ -59,7 +60,9 @@ func newClient(ctx context.Context, target string, batch int, timeout time.Durat
 		sendHandle:    make(chan clientWrappedMsg),
 		receiveHandle: make(chan clientWrappedMsg),
 	}
+	cc.ctx, cc.cancel = context.WithCancel(ctx)
 	if err := cc.dial(); err != nil {
+		cc.cancel()
 		return nil, err
 	}
 	go cc.processMsg()
@@ -280,6 +283,10 @@ func (cc *copierClient) handleReceive(conn net.Conn) {
 			}
 		}
 	}
+}
+
+func (cc *copierClient) Close() {
+	cc.cancel()
 }
 
 // auto increased int64 value

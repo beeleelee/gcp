@@ -24,6 +24,7 @@ func cpDirFromHost(
 	if err != nil {
 		return err
 	}
+	defer cc.Close()
 
 	return walkRemoteDir(ctx, cc, srcDir, target,
 		chunkSize, batch, maxRetries, useChecksum)

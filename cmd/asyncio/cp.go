@@ -63,6 +63,7 @@ func isRemoteDir(ctx context.Context, hostAddr, path string, timeout time.Durati
 	if err != nil {
 		return false, err
 	}
+	defer cc.Close()
 	res, err := cc.Stat(path)
 	if err != nil {
 		return false, err
