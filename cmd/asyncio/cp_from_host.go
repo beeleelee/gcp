@@ -11,6 +11,12 @@ import (
 	"github.com/beeleelee/gcp/logger"
 )
 
+// downloadFile orchestrates a single file download from the remote host.
+// It Stats the remote file for size, loads resume state, opens the local
+// file (O_TRUNC for fresh, O_RDWR for resume), then dispatches concurrent
+// chunk reads via processChunks. Each chunk is verified with CRC-32
+// checksum if enabled. On completion it optionally verifies the file hash
+// and deletes the resume state.
 func downloadFile(
 	ctx context.Context,
 	cc *copierClient,
@@ -139,6 +145,8 @@ func downloadFile(
 	return nil
 }
 
+// cpOneFileFromHost opens a connection and downloads a single file from
+// the remote host to a local path.
 func cpOneFileFromHost(
 	ctx context.Context,
 	hostAddr, src, target string,

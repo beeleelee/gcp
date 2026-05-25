@@ -15,27 +15,32 @@ import (
 	"github.com/beeleelee/gcp/logger"
 )
 
-// wrap asyinc message with payload
-// payload contains data bytes or be empty slice
+// clientWrappedMsg pairs a decoded protocol message with its payload.
 type clientWrappedMsg struct {
 	msg     asyncio.MSG
 	payload []byte
 }
 
-// wrap response channel with clientWrappedMsg
-// resChan will receive response msg from server
+// clientRequestMsg wraps a clientWrappedMsg with a response channel so that
+// processMsg can route the server's response back to the waiting caller.
 type clientRequestMsg struct {
 	clientWrappedMsg
 	resChan chan clientWrappedMsg
 }
 
-// copierClinet
-// target - the host address to connect to
-// id - auto increased int64 value for message matching
-// batch - the number of connections going to hold with target host
-// msgIn - channel that is the entry point for outside message
-// sendHandle - channel that receive messages from processMsg() and send to target host
-// receiveHandle - channel that send messages to processMsg() from connections
+// copierClient is a message-oriented RPC client built on a pool of TCP
+// connections. It uses three channels to decouple callers, message routing,
+// and network I/O:
+//
+//	msgIn         — entry point for outgoing RPC requests (produced by callers)
+//	sendHandle    — messages ready to be written to a TCP connection
+//	receiveHandle — incoming responses from TCP connections, ready for routing
+//
+// The processMsg goroutine sits between msgIn and (sendHandle, receiveHandle),
+// matching request IDs to response channels.
+//
+// batch controls the number of concurrent TCP connections and thus the
+// maximum parallelism for chunk transfers.
 type copierClient struct {
 	ctx           context.Context
 	cancel        context.CancelFunc
@@ -69,9 +74,10 @@ func newClient(ctx context.Context, target string, batch int, timeout time.Durat
 	return cc, nil
 }
 
-// processMsg
-//
-// messages match center - match messages with message id
+// processMsg is the message routing hub. It maintains a resCache mapping
+// message IDs to response channels. Outgoing requests are forwarded to
+// sendHandle (and their channel stored), incoming responses are matched by
+// ID and delivered to the waiting caller via the cached channel.
 func (cc *copierClient) processMsg() {
 	resCache := make(map[int64]chan clientWrappedMsg)
 	for {
@@ -176,12 +182,17 @@ func (cc *copierClient) handleSend(conn net.Conn) {
 	}
 }
 
-// handleReceive
+// handleReceive is a read-loop state machine that reassembles gcp frames
+// from a raw TCP connection. The state transitions are:
 //
-// reading loop on connection
-// keeping read packets from target host
-// decode packets to message
-// transfer message to match center (processMsg())
+//  1. readSize < HeadSize        → reading header bytes into bufHead
+//  2. len(bufMsg) == 0           → header parsed, allocate bufMsg and payload
+//  3. reading CBOR message body  → reading into bufMsg
+//  4. reading payload bytes      → reading into payload
+//
+// After a complete frame is assembled, the message is decoded (DecodePre +
+// Decode) and dispatched to receiveHandle. The readSize, bufMsg, payload,
+// and magicNumChecked variables track the machine's state across Read calls.
 func (cc *copierClient) handleReceive(conn net.Conn) {
 	defer conn.Close()
 	bufHead := make([]byte, asyncio.HeadSize)
@@ -270,15 +281,15 @@ func (cc *copierClient) Close() {
 	cc.cancel()
 }
 
-// auto increased int64 value
+// genMsgID returns a monotonically increasing message ID. The counter is
+// atomically incremented, making it safe for concurrent callers.
 func (cc *copierClient) genMsgID() int64 {
 	return atomic.AddInt64(&cc.id, 1)
 }
 
-// Create
-//
-// kind of rpc method
-// create file quest to target host
+// Create sends a CreateReq and blocks until the response arrives or the
+// context is cancelled. This implements an RPC-like synchronous pattern
+// over the multiplexed connection pool.
 func (cc *copierClient) Create(target string, size int64, mode fs.FileMode) (clientWrappedMsg, error) {
 	ch := make(chan clientWrappedMsg)
 	cc.msgIn <- clientRequestMsg{

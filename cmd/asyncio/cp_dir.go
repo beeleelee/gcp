@@ -9,6 +9,10 @@ import (
 	"github.com/beeleelee/gcp/logger"
 )
 
+// cpDirToHost recursively uploads a local directory tree to the remote
+// host. It uses filepath.Walk to discover files, creates remote directory
+// entries via cc.Create (size=0), and uploads each regular file via
+// uploadFile.
 func cpDirToHost(
 	ctx context.Context,
 	hostAddr, srcDir, target string,

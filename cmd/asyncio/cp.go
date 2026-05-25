@@ -17,10 +17,15 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+// isRemoteAddr returns true if s matches the "host:path" pattern used
+// to reference remote files. The heuristic is simply the presence of a
+// colon, which is sufficient since local paths on Unix rarely contain one.
 func isRemoteAddr(s string) bool {
 	return strings.Contains(s, ":")
 }
 
+// lookupHosts resolves a hostname using /etc/hosts (ignoring DNS). This
+// is used when the host part of a remote address is not a raw IP.
 func lookupHosts(hostname string) (string, error) {
 	f, err := os.Open("/etc/hosts")
 	if err != nil {
@@ -58,6 +63,8 @@ func lookupHosts(hostname string) (string, error) {
 	return "", fmt.Errorf("hostname %q not found in /etc/hosts", hostname)
 }
 
+// isRemoteDir checks whether a remote path is a directory by issuing a
+// Stat RPC. It creates a temporary client connection for the query.
 func isRemoteDir(ctx context.Context, hostAddr, path string, timeout time.Duration, useChecksum bool) (bool, error) {
 	cc, err := newClient(ctx, hostAddr, 1, timeout, useChecksum)
 	if err != nil {
@@ -75,6 +82,9 @@ func isRemoteDir(ctx context.Context, hostAddr, path string, timeout time.Durati
 	return statRes.IsDir, nil
 }
 
+// parseRemoteAddr splits a "host:port/path" remote address into its
+// components. The port defaults to 1717 if omitted. Host resolution is
+// done via /etc/hosts (not DNS). IPv6 is explicitly unsupported.
 func parseRemoteAddr(s string) (hostPort, path string, err error) {
 	colonIdx := strings.Index(s, ":")
 	if colonIdx < 0 {
@@ -133,6 +143,9 @@ func parseRemoteAddr(s string) (hostPort, path string, err error) {
 	return net.JoinHostPort(host, port), path, nil
 }
 
+// copySingle is the 4-way router that decides whether to upload, download,
+// or recurse into a directory based on whether src and dst are local or
+// remote filesystem paths.
 func copySingle(
 	ctx context.Context,
 	src, dst string,
@@ -210,6 +223,9 @@ func copySingle(
 	}
 }
 
+// cpCmd implements the "cp" CLI subcommand. It parses flags, expands
+// source globs (local or remote), and dispatches each source-destination
+// pair to copySingle. Dry-run prints the plan without doing any I/O.
 var cpCmd = &cli.Command{
 	Name:  "cp",
 	Usage: "",

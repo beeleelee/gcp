@@ -15,12 +15,21 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+// wrappedMsg pairs a decoded protocol message with the connection it arrived
+// on, so that worker goroutines can send responses back through the same conn.
 type wrappedMsg struct {
 	msg     asyncio.MSG
 	payload []byte
 	conn    gnet.Conn
 }
 
+// copierServer implements the gnet event-loop server. It receives gcp protocol
+// messages from many connections and dispatches them to a pool of worker
+// goroutines that perform actual file I/O.
+//
+// The worker pool (processNum goroutines) decouples the gnet I/O event loop
+// from blocking file operations. The processMsgChan is buffered to processNum
+// to prevent the event loop from blocking when all workers are busy.
 type copierServer struct {
 	gnet.BuiltinEventEngine
 
@@ -35,6 +44,10 @@ func (c *copierServer) OnBoot(eng gnet.Engine) gnet.Action {
 	return gnet.None
 }
 
+// OnTraffic is called by gnet when data arrives on a connection. It reads
+// complete gcp frames in a loop, dispatching each to the worker pool. When
+// an incomplete frame is detected (ErrIncompletePacket) it returns gnet.None
+// to wait for more data — gnet handles buffering internally.
 func (c *copierServer) OnTraffic(conn gnet.Conn) gnet.Action {
 	logger.Log.Debug("OnTraffic called")
 	for {
@@ -70,32 +83,32 @@ func (c *copierServer) process() {
 						msg, _ := (wmsg.msg).(*asyncio.CreateReq)
 						c.create(wmsg.conn, msg)
 					case asyncio.CreateResT:
-						// for now, do nothing
+						// unreachable — the server sends CreateRes, it never receives one.
 					case asyncio.WriteReqT:
 						msg, _ := (wmsg.msg).(*asyncio.WriteReq)
 						c.write(wmsg.conn, msg, wmsg.payload)
 					case asyncio.WriteResT:
-						// for now, do nothing
+						// unreachable — the server sends WriteRes, it never receives one.
 					case asyncio.ReadReqT:
 						msg, _ := (wmsg.msg).(*asyncio.ReadReq)
 						c.read(wmsg.conn, msg)
 					case asyncio.ReadResT:
-						// for now, do nothing
+						// unreachable — the server sends ReadRes, it never receives one.
 					case asyncio.StatReqT:
 						msg, _ := (wmsg.msg).(*asyncio.StatReq)
 						c.stat(wmsg.conn, msg)
 					case asyncio.StatResT:
-						// for now, do nothing
+						// unreachable — the server sends StatRes, it never receives one.
 					case asyncio.ReadDirReqT:
 						msg, _ := (wmsg.msg).(*asyncio.ReadDirReq)
 						c.readDir(wmsg.conn, msg)
 					case asyncio.ReadDirResT:
-						// for now, do nothing
+						// unreachable — the server sends ReadDirRes, it never receives one.
 					case asyncio.HashReqT:
 						msg, _ := (wmsg.msg).(*asyncio.HashReq)
 						c.hash(wmsg.conn, msg)
 					case asyncio.HashResT:
-						// for now, do nothing
+						// unreachable — the server sends HashRes, it never receives one.
 					default:
 						logger.Log.Error("should not be here, unrecognized message type", "wmsg", wmsg)
 					}
@@ -105,6 +118,12 @@ func (c *copierServer) process() {
 	}
 }
 
+// create handles a CreateReq from the client.
+//
+// For directories it calls os.MkdirAll. For files it creates the parent
+// directory tree, then creates or truncates the file only if it does not
+// already exist (the file-already-exists path is a no-op, which supports
+// upload resume where the client skips Create entirely).
 func (c *copierServer) create(conn gnet.Conn, req *asyncio.CreateReq) {
 	logger.Log.Debug("create called", "path", req.Path, "size", req.Size, "mode", req.Mode)
 
@@ -346,6 +365,9 @@ func (c *copierServer) writeSuccess(conn gnet.Conn, req *asyncio.WriteReq, n int
 	}
 }
 
+// hash handles a HashReq by computing a SHA-256 digest of the requested file
+// and returning it in a HashRes. This is used for post-transfer integrity
+// verification and reads the entire file into the hash state.
 func (c *copierServer) hash(conn gnet.Conn, req *asyncio.HashReq) {
 	fd, err := os.Open(req.Path)
 	if err != nil {
@@ -380,6 +402,9 @@ func (c *copierServer) hashFailed(conn gnet.Conn, req *asyncio.HashReq) {
 	}
 }
 
+// newServer creates a server, starts processNum worker goroutines, and
+// returns the server handle. Workers are started before gnet.Run so they
+// are ready to receive messages as soon as the event loop begins.
 func newServer(ctx context.Context, processNum int) *copierServer {
 	cs := &copierServer{
 		processMsgChan: make(chan *wrappedMsg, processNum),

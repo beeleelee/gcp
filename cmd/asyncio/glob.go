@@ -12,10 +12,15 @@ import (
 	"github.com/beeleelee/gcp/asyncio"
 )
 
+// hasGlob checks whether the base name of a path contains any shell glob
+// metacharacters (*, ?, [).
 func hasGlob(s string) bool {
 	return strings.ContainsAny(filepath.Base(s), "*?[")
 }
 
+// expandLocalSource resolves a local file path or glob pattern into a
+// concrete list of file paths. If glob returns a directory and recursive
+// is true, the directory is walked and all regular files are included.
 func expandLocalSource(pattern string, recursive bool) ([]string, error) {
 	if !hasGlob(pattern) {
 		return []string{pattern}, nil
@@ -57,6 +62,9 @@ func expandLocalSource(pattern string, recursive bool) ([]string, error) {
 	return result, nil
 }
 
+// expandRemoteSources resolves a remote glob pattern by listing the parent
+// directory on the server and matching entries locally. Returns addresses
+// in "host:port/path" format suitable for the remote address parser.
 func expandRemoteSources(
 	ctx context.Context,
 	hostPort, remotePath string,

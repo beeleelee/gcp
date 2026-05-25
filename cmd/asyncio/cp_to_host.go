@@ -8,6 +8,8 @@ import (
 	"github.com/beeleelee/gcp/logger"
 )
 
+// cpOneFileToHost opens a local file and uploads it to the remote host in
+// its entirety — stat, connect, then delegate to uploadFile.
 func cpOneFileToHost(
 	ctx context.Context,
 	hostAddr, src, target string,
@@ -31,6 +33,11 @@ func cpOneFileToHost(
 	return uploadFile(ctx, cc, src, target, sfinfo, chunkSize, batch, maxRetries, useSha256)
 }
 
+// uploadFile orchestrates a single file upload to the remote host. It
+// loads any existing resume state (creating the remote file only for fresh
+// transfers), then dispatches concurrent chunk writes via processChunks.
+// On completion it optionally verifies the file hash and deletes the
+// resume state.
 func uploadFile(
 	ctx context.Context,
 	cc *copierClient,
@@ -97,6 +104,9 @@ func uploadFile(
 	return nil
 }
 
+// uploadFileChunk reads a chunk from the local file at offset off and
+// sends it to the remote host via cc.Write(). It retries on failure up to
+// maxRetries times with exponential backoff.
 func uploadFileChunk(ctx context.Context, cc *copierClient, sfd *os.File, target string, off, size int64, maxRetries int) error {
 	buf := make([]byte, size)
 	if _, err := sfd.ReadAt(buf, off); err != nil {

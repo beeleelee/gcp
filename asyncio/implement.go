@@ -2,6 +2,7 @@ package asyncio
 
 import "github.com/fxamacker/cbor/v2"
 
+// Compile-time checks: every concrete message type implements MSG.
 var _ MSG = (*CreateReq)(nil)
 var _ MSG = (*CreateRes)(nil)
 var _ MSG = (*WriteReq)(nil)
@@ -24,6 +25,7 @@ func (m *CreateReq) GetID() int64 {
 }
 
 func (m *CreateReq) Encode() []byte {
+	// cbor.Marshal cannot fail on simple structs; the error is discarded.
 	bs, _ := cbor.Marshal(m)
 	return bs
 }

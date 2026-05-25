@@ -18,6 +18,13 @@ import (
 	"github.com/beeleelee/gcp/logger"
 )
 
+// resumeState tracks which chunks of a file transfer have been confirmed by
+// the receiver. This enables breakpoint resume across process restarts.
+//
+// The in-memory completedSet (map) provides O(1) lookups during chunk
+// scheduling, while Completed (slice) is the JSON-serialized representation
+// persisted to disk. Pending collects newly-completed offsets for batched
+// writes, reducing disk I/O compared to writing on every chunk.
 type resumeState struct {
 	Version    int     `json:"version"`
 	SourceSize int64   `json:"source_size"`
@@ -31,12 +38,18 @@ type resumeState struct {
 	mu           sync.Mutex
 }
 
+// stateFilePath derives a deterministic, collision-resistant path for the
+// resume state file. The filename is SHA-256(128 bits) of source:target,
+// stored under os.TempDir() + "/gcp/".
 func stateFilePath(srcPath, targetPath string) string {
 	h := sha256.Sum256([]byte(srcPath + ":" + targetPath))
 	name := fmt.Sprintf("gcp-resume-%s.json", hex.EncodeToString(h[:16]))
 	return filepath.Join(os.TempDir(), "gcp", name)
 }
 
+// loadResumeState reads a previously saved state file. It returns nil if
+// the file does not exist, is corrupt, or the source size or chunk size
+// no longer match the current transfer (indicating the file has changed).
 func loadResumeState(srcPath, targetPath string, sourceSize, chunkSize int64, batch int) *resumeState {
 	p := stateFilePath(srcPath, targetPath)
 	f, err := os.Open(p)
@@ -62,6 +75,9 @@ func loadResumeState(srcPath, targetPath string, sourceSize, chunkSize int64, ba
 	return &s
 }
 
+// saveResumeState writes the completed-set bitmap to disk atomically: it
+// writes to a .tmp file, then renames over the target. This prevents
+// torn-writes from corrupting the state across a crash.
 func saveResumeState(s *resumeState) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -94,6 +110,9 @@ func saveResumeState(s *resumeState) error {
 	return os.Rename(tmp, s.path)
 }
 
+// deleteResumeState removes the state file on disk. It is called when a
+// transfer completes successfully, so that a future identical transfer
+// does not skip zero-length or other boundary-case chunks.
 func deleteResumeState(s *resumeState) {
 	if s == nil {
 		return
@@ -101,6 +120,9 @@ func deleteResumeState(s *resumeState) {
 	os.Remove(s.path)
 }
 
+// addCompletedOffset marks a chunk offset as completed. It buffers the
+// update in s.pending and flushes to disk only when the batch threshold
+// is reached, reducing disk I/O without losing too much progress on crash.
 func addCompletedOffset(s *resumeState, offset int64) error {
 	if s == nil {
 		return nil
@@ -117,6 +139,9 @@ func addCompletedOffset(s *resumeState, offset int64) error {
 	return nil
 }
 
+// flushResumeState forces a disk write of any buffered (pending)
+// completions. This is called after all chunks are dispatched to ensure
+// the final state is durable before post-transfer verification.
 func flushResumeState(s *resumeState) error {
 	if s == nil {
 		return nil
@@ -130,6 +155,9 @@ func flushResumeState(s *resumeState) error {
 	return nil
 }
 
+// isCompleted checks whether a given chunk offset was already confirmed
+// by the receiver. It is used during chunk scheduling to skip chunks that
+// were already transferred in a prior run.
 func isCompleted(s *resumeState, offset int64) bool {
 	if s == nil {
 		return false
@@ -140,6 +168,11 @@ func isCompleted(s *resumeState, offset int64) bool {
 	return ok
 }
 
+// processChunks divides a file into fixed-size chunks and dispatches them
+// concurrently to fn, bounded by a semaphore of size batch. It supports
+// resume by skipping already-completed offsets. Progress is reported via
+// progressChan, and the first error from any goroutine cancels all other
+// in-flight chunks. Returns nil when all chunks succeed.
 func processChunks(
 	ctx context.Context,
 	fileSize, chunkSize int64,
@@ -214,6 +247,10 @@ func processChunks(
 	}
 }
 
+// verifyFileHash requests a SHA-256 hash of the remote file from the
+// server, computes the local file's SHA-256, and compares them. A mismatch
+// is returned as an error. This is used for post-transfer integrity checks
+// controlled by the --sha256 flag.
 func verifyFileHash(ctx context.Context, cc *copierClient, remotePath, localPath string) error {
 	logger.Log.Debug("verifying file hash", "remote", remotePath, "local", localPath)
 

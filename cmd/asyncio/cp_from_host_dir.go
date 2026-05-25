@@ -11,6 +11,9 @@ import (
 	"github.com/beeleelee/gcp/logger"
 )
 
+// cpDirFromHost recursively downloads a remote directory tree to the
+// local filesystem. It creates a client connection then delegates to
+// walkRemoteDir.
 func cpDirFromHost(
 	ctx context.Context,
 	hostAddr, srcDir, target string,
@@ -31,6 +34,10 @@ func cpDirFromHost(
 		chunkSize, batch, maxRetries, useChecksum, useSha256)
 }
 
+// walkRemoteDir recursively reads a remote directory listing and downloads
+// each entry. Directories are created locally; regular files are
+// downloaded via downloadFile. This is the counterpart of filepath.Walk
+// for the remote filesystem protocol.
 func walkRemoteDir(
 	ctx context.Context,
 	cc *copierClient,
