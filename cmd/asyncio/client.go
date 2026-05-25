@@ -162,31 +162,12 @@ func (cc *copierClient) handleSend(conn net.Conn) {
 			msg := wmsg.msg
 			payload := wmsg.payload
 			logger.Log.Debug("sending msg", "type", msg.Type(), "id", msg.GetID(), "payloadLen", len(payload))
-			head := make([]byte, asyncio.HeadSize)
-			head[0] = asyncio.MagicA
-			head[1] = asyncio.MagicB
-			head[2] = byte(msg.Type())
-			msgbs := msg.Encode()
-			binary.BigEndian.PutUint32(head[3:3+asyncio.MessageSize], uint32(len(msgbs)))
-			binary.BigEndian.PutUint32(head[3+asyncio.MessageSize:], uint32(len(payload)))
+			head, msgbs := asyncio.EncodeMsg(msg, len(payload))
 			if cc.timeout > 0 {
 				conn.SetWriteDeadline(time.Now().Add(cc.timeout))
 			}
-			if _, err := conn.Write(head); err != nil {
-				logger.Log.Debug("write error", "err", err)
-				return
-			}
-			if cc.timeout > 0 {
-				conn.SetWriteDeadline(time.Now().Add(cc.timeout))
-			}
-			if _, err := conn.Write(msgbs); err != nil {
-				logger.Log.Debug("write error", "err", err)
-				return
-			}
-			if cc.timeout > 0 {
-				conn.SetWriteDeadline(time.Now().Add(cc.timeout))
-			}
-			if _, err := conn.Write(payload); err != nil {
+			bufs := net.Buffers{head, msgbs, payload}
+			if _, err := bufs.WriteTo(conn); err != nil {
 				logger.Log.Debug("write error", "err", err)
 				return
 			}

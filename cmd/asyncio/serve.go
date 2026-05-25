@@ -265,7 +265,8 @@ func (c *copierServer) readDir(conn gnet.Conn, req *asyncio.ReadDirReq) {
 
 func (c *copierServer) readDirFailed(conn gnet.Conn, req *asyncio.ReadDirReq) {
 	if err := asyncio.WriteMessage(conn, &asyncio.ReadDirRes{
-		ID: req.ID,
+		ID:      req.ID,
+		Success: false,
 	}, nil); err != nil {
 		logger.Log.Debug("failed to write message", "err", err)
 	}

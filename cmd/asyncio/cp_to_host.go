@@ -3,10 +3,7 @@ package main
 import (
 	"context"
 	"os"
-	"sync"
 	"time"
-
-	"github.com/beeleelee/gcp/cmd/progressbar"
 )
 
 func cpOneFileToHost(
@@ -51,56 +48,18 @@ func uploadFile(
 		return err
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	var wg sync.WaitGroup
-	var offset int64
-	remainSize := info.Size()
-
-	concurrentCtl := make(chan struct{}, batch)
-	errChan := make(chan error, batch)
-	progressChan := make(chan int64, batch+1)
-	go progressbar.Progress(ctx, info.Size(), progressChan, time.Now(), time.Millisecond*200)
-
-loop:
-	for remainSize > 0 {
-		select {
-		case err = <-errChan:
-			cancel()
-			break loop
-		default:
-		}
-		chus := chunkSize
-		if remainSize < chus {
-			chus = remainSize
-		}
-		wg.Add(1)
-		go func(off int64, size int64) {
-			defer wg.Done()
-			select {
-			case concurrentCtl <- struct{}{}:
-			case <-ctx.Done():
-				return
-			}
-			defer func() { <-concurrentCtl }()
-			if err := uploadFileChunk(ctx, cc, sfd, target, off, size, maxRetries); err != nil {
-				select {
-				case errChan <- err:
-				case <-ctx.Done():
-				}
-				return
+	return processChunks(ctx, info.Size(), chunkSize, batch,
+		func(ctx context.Context, offset, size int64, progressChan chan<- int64) error {
+			if err := uploadFileChunk(ctx, cc, sfd, target, offset, size, maxRetries); err != nil {
+				return err
 			}
 			select {
 			case progressChan <- size:
 			case <-ctx.Done():
 			}
-		}(offset, chus)
-		offset += chus
-		remainSize -= chus
-	}
-	wg.Wait()
-	return nil
+			return nil
+		},
+	)
 }
 
 // uploadFileChunk reads a chunk from the local file and sends it via cc.Write with retries.

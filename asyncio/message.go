@@ -4,8 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
-
-	"github.com/panjf2000/gnet/v2"
+	"net"
 )
 
 const MagicA = 0xA8
@@ -108,6 +107,13 @@ type ReadDirRes struct {
 	Entries []DirEntry
 }
 
+// PacketReader is the interface that wraps Peek and Discard,
+// matching the signature of gnet.Conn for zero-copy read.
+type PacketReader interface {
+	Peek(n int) ([]byte, error)
+	Discard(n int) (int, error)
+}
+
 var (
 	ErrIncompletePacket = errors.New("incomplete packet")
 	ErrBadProtocol      = errors.New("bad protocol")
@@ -115,15 +121,15 @@ var (
 	ErrHeadSize         = errors.New("short head size")
 )
 
-func ReadMessage(conn gnet.Conn) (MSG, []byte, error) {
-	buf, err := conn.Peek(2)
+func ReadMessage(r PacketReader) (MSG, []byte, error) {
+	buf, err := r.Peek(2)
 	if err != nil {
 		return nil, nil, switchError(err)
 	}
 	if !MagicNumberCheck(buf[0], buf[1]) {
 		return nil, nil, ErrBadProtocol
 	}
-	buf, err = conn.Peek(HeadSize)
+	buf, err = r.Peek(HeadSize)
 	if err != nil {
 		return nil, nil, switchError(err)
 	}
@@ -132,7 +138,7 @@ func ReadMessage(conn gnet.Conn) (MSG, []byte, error) {
 		return nil, nil, err
 	}
 	total := int(msgSize) + int(payloadSize)
-	buf, err = conn.Peek(HeadSize + total)
+	buf, err = r.Peek(HeadSize + total)
 	if err != nil {
 		return nil, nil, switchError(err)
 	}
@@ -141,13 +147,15 @@ func ReadMessage(conn gnet.Conn) (MSG, []byte, error) {
 	}
 	payload := make([]byte, payloadSize)
 	copy(payload, buf[HeadSize+int(msgSize):])
-	conn.Discard(len(buf))
+	r.Discard(len(buf))
 	return msg, payload, nil
 }
 
-func WriteMessage(conn gnet.Conn, msg MSG, payload []byte) error {
+func WriteMessage(w io.Writer, msg MSG, payload []byte) error {
 	head, msgbs := EncodeMsg(msg, len(payload))
-	return conn.AsyncWritev([][]byte{head, msgbs, payload}, nil)
+	bufs := net.Buffers{head, msgbs, payload}
+	_, err := bufs.WriteTo(w)
+	return err
 }
 
 func switchError(err error) error {

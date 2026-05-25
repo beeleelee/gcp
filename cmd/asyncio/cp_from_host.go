@@ -5,11 +5,9 @@ import (
 	"fmt"
 	"hash/crc32"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/beeleelee/gcp/asyncio"
-	"github.com/beeleelee/gcp/cmd/progressbar"
 )
 
 func downloadFile(
@@ -20,28 +18,26 @@ func downloadFile(
 	batch int,
 	maxRetries int,
 	useChecksum bool,
-) (err error) {
+) error {
 	tfd, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
 	if err != nil {
-		return
+		return err
 	}
 	defer tfd.Close()
-
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 
 	var (
 		res     clientWrappedMsg
 		statRes *asyncio.StatRes
+		statErr error
 	)
 	for attempt := 0; attempt <= maxRetries; attempt++ {
-		res, err = cc.Stat(src)
-		if err == nil {
+		res, statErr = cc.Stat(src)
+		if statErr == nil {
 			statRes = res.msg.(*asyncio.StatRes)
 			if !statRes.Success {
-				err = fmt.Errorf("server returned success=false for stat")
+				statErr = fmt.Errorf("server returned success=false for stat")
 			} else if statRes.IsDir {
-				err = fmt.Errorf("path is a directory")
+				statErr = fmt.Errorf("path is a directory")
 			} else {
 				break
 			}
@@ -55,43 +51,13 @@ func downloadFile(
 			}
 		}
 	}
-	if err != nil {
-		return
+	if statErr != nil {
+		return statErr
 	}
 
 	fileSize := statRes.Size
-	var offset int64
-	remainSize := fileSize
-
-	var wg sync.WaitGroup
-	concurrentCtl := make(chan struct{}, batch)
-	errChan := make(chan error, batch)
-	progressChan := make(chan int64, batch+1)
-	go progressbar.Progress(ctx, fileSize, progressChan, time.Now(), time.Millisecond*200)
-	progressChan <- 0
-
-loop:
-	for remainSize > 0 {
-		select {
-		case err = <-errChan:
-			cancel()
-			break loop
-		default:
-		}
-		chus := chunkSize
-		if remainSize < chus {
-			chus = remainSize
-		}
-		wg.Add(1)
-		go func(off int64, size int64) {
-			defer wg.Done()
-			select {
-			case concurrentCtl <- struct{}{}:
-			case <-ctx.Done():
-				return
-			}
-			defer func() { <-concurrentCtl }()
-
+	return processChunks(ctx, fileSize, chunkSize, batch,
+		func(ctx context.Context, offset, size int64, progressChan chan<- int64) error {
 			var (
 				res     clientWrappedMsg
 				readErr error
@@ -100,17 +66,16 @@ loop:
 			for attempt := 0; attempt <= maxRetries; attempt++ {
 				select {
 				case <-ctx.Done():
-					errChan <- ctx.Err()
-					return
+					return ctx.Err()
 				default:
 				}
-				res, readErr = cc.Read(src, off, size)
+				res, readErr = cc.Read(src, offset, size)
 				if readErr == nil {
 					readRes := res.msg.(*asyncio.ReadRes)
 					if !readRes.Success {
-						readErr = fmt.Errorf("server returned success=false for offset %d", off)
+						readErr = fmt.Errorf("server returned success=false for offset %d", offset)
 					} else if useChecksum && readRes.Checksum != 0 && crc32.ChecksumIEEE(res.payload) != readRes.Checksum {
-						readErr = fmt.Errorf("checksum mismatch for offset %d", off)
+						readErr = fmt.Errorf("checksum mismatch for offset %d", offset)
 					} else {
 						break retryLoop
 					}
@@ -119,38 +84,25 @@ loop:
 					backoff := time.Duration(100<<attempt) * time.Millisecond
 					select {
 					case <-ctx.Done():
-						errChan <- ctx.Err()
-						return
+						return ctx.Err()
 					case <-time.After(backoff):
 					}
 				}
 			}
 			if readErr != nil {
-				select {
-				case errChan <- readErr:
-				case <-ctx.Done():
-				}
-				return
+				return readErr
 			}
 
-			_, err := tfd.WriteAt(res.payload, off)
-			if err != nil {
-				select {
-				case errChan <- err:
-				case <-ctx.Done():
-				}
-				return
+			if _, err := tfd.WriteAt(res.payload, offset); err != nil {
+				return err
 			}
 			select {
 			case progressChan <- int64(len(res.payload)):
 			case <-ctx.Done():
 			}
-		}(offset, chus)
-		offset += chus
-		remainSize -= chus
-	}
-	wg.Wait()
-	return
+			return nil
+		},
+	)
 }
 
 func cpOneFileFromHost(
