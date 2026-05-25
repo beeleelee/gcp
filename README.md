@@ -1,23 +1,20 @@
 # gcp
 
-Copy files between local and hosts.
+Copy files between local and hosts over TCP.
 
 > **Note:** The `blockio` (gRPC) module is **deprecated**. It is kept for reference but will not receive new features. Use the `gcp` (asyncio) module instead.
-
-## Binaries
-
-| make target | source dir     | output binary   | transport          |
-|-------------|----------------|-----------------|--------------------|
-| `gcp`       | `cmd/asyncio/` | `./bin/gcp`     | custom TCP + CBOR  |
-| ~~`blockio`~~ | ~~`cmd/blockio/`~~ | ~~`./bin/blockio`~~ | ~~gRPC~~ (deprecated) |
-
-Both default to port `1717`.
 
 ## Build
 
 ```
-make gcp               # asyncio binary (recommended)
-make blockio           # gRPC binary (deprecated)
+make gcp        # builds asyncio binary: ./bin/gcp
+make blockio    # builds gRPC binary (deprecated)
+```
+
+Tests:
+```
+go test -count=1 ./...
+go test -race -count=1 ./...
 ```
 
 ## Usage
@@ -26,54 +23,79 @@ make blockio           # gRPC binary (deprecated)
 
 ```
 ./bin/gcp serve --listen tcp://0.0.0.0:1717 --process-num 4 --multicore true
-./bin/blockio serve --listen :1717   # (deprecated)
 ```
 
 ### Upload (local to remote)
 
 ```
-./bin/gcp cp --host localhost:1717 ./src.txt /remote/path/dst.txt
-./bin/blockio cp --host localhost:1717 --chunk 32768 --batch 16 ./src.txt /remote/path/dst.txt   # (deprecated)
+./bin/gcp cp ./src.txt host:1717/remote/path
+./bin/gcp cp -r ./mydir host:1717/remote/dir
 ```
 
-The target path is optional — if omitted or empty, the source filename is used:
+Omitting the remote path or ending with `/` appends the source basename:
 
 ```
-./bin/gcp cp --host localhost:1717 ./src.txt
-# copies to <remote working dir>/src.txt
-```
-
-If the target ends with `/`, the source filename is appended:
-
-```
-./bin/gcp cp --host localhost:1717 ./src.txt /remote/dir/
-# copies to /remote/dir/src.txt
+./bin/gcp cp ./src.txt host:1717/
+# copies to <remote>/src.txt
 ```
 
 ### Download (remote to local)
 
 ```
-./bin/gcp cp --from /remote/path/src.txt --host localhost:1717 ./local_dst.txt
-./bin/blockio cp --from /remote/path/src.txt --host localhost:1717 --chunk 32768 --batch 16 ./local_dst.txt   # (deprecated)
+./bin/gcp cp host:1717/remote/path ./local_dst
+./bin/gcp cp -r host:1717/remote/dir ./local_dir
 ```
 
-Omitting the local path uses the remote filename in the current directory:
+Omitting the local path downloads to the current directory:
 
 ```
-./bin/gcp cp --from /remote/path/src.txt --host localhost:1717
+./bin/gcp cp host:1717/remote/src.txt
 # downloads to ./src.txt
 ```
 
-### Flags
+### Multi-source and wildcards
 
-| Flag     | Default        | Description           |
-|----------|----------------|-----------------------|
-| `--host` | `localhost:1717` | Remote host address |
-| `--chunk`| `32768`        | Chunk size in bytes   |
-| `--batch`| `4` (gcp) / `16` (blockio) | Max concurrent chunks |
-| `--from` | —              | Remote source path (download mode) |
+```
+# multiple files
+./bin/gcp cp a.txt b.txt c.txt host:1717/dst/
 
-Log level: `--level` or `-L` flag (`error` default, accepts `info`, `debug`, etc.).
+# local glob (quoted to prevent shell expansion)
+./bin/gcp cp 'src/*.txt' host:1717/dst/
+
+# recursive local glob (walks directories matched by the pattern)
+./bin/gcp cp -r '/src/dir/*' host:1717/dst/
+
+# remote glob (matched against ReadDir entries)
+./bin/gcp cp 'host:1717/dir/*.txt' ./local/
+```
+
+When copying multiple sources, the destination is treated as a directory.
+
+### Dry-run
+
+```
+./bin/gcp cp --dry-run ./src.txt host:1717/dst
+./bin/gcp cp --dry-run 'host:1717/dir/*.txt' ./local/
+```
+
+### Reliability options
+
+```
+./bin/gcp cp --timeout 15s --retry 3 --checksum true ./src.txt host:1717/dst
+```
+
+### `cp` flags
+
+| Flag              | Default | Description                            |
+|-------------------|---------|----------------------------------------|
+| `--chunk`         | 32768   | chunk size in bytes                    |
+| `--batch`         | 4       | max concurrent chunk transfers         |
+| `--timeout`       | 15s     | read/write timeout (0 to disable)      |
+| `--retry`         | 3       | max chunk transfer retries             |
+| `--checksum`      | true    | enable CRC-32 chunk integrity checks   |
+| `--recursive, -r` | false   | copy directories recursively           |
+| `--dry-run`       | false   | show transfer plan without doing it    |
+| `--level, -L`     | error   | log level (info, debug, etc.)          |
 
 ## Protocol safety limits
 
@@ -84,3 +106,27 @@ The asyncio protocol reads `msgSize` and `payloadSize` from the wire header. Two
 
 Without these two bounds a malicious or corrupted header could set `msgSize = 0xFFFFFFFF` to cause a slice-bounds panic or `payloadSize = math.MaxUint32` to trigger a 4 GB `make` OOM.
 
+## Architecture
+
+- `cmd/asyncio/` — primary CLI entrypoint and copy logic
+- `asyncio/` — shared protocol library (message types, CBOR encode/decode, wire format)
+- `logger/` — zerolog wrapped as `slog.Logger`
+- `cmd/progressbar/` — real-time progress display using `go-humanize`
+- `blockio/` — deprecated gRPC variant (proto definition + generated code)
+
+### Message types
+
+The custom TCP protocol uses a binary header with magic bytes (`0xA8 0xD5`), message type, and CBOR-encoded payloads:
+
+| Message       | Direction       | Description                    |
+|---------------|-----------------|--------------------------------|
+| `CreateReq`   | client → server | create file or directory       |
+| `CreateRes`   | server → client | create result                  |
+| `WriteReq`    | client → server | write chunk at offset          |
+| `WriteRes`    | server → client | write result                   |
+| `ReadReq`     | client → server | read chunk at offset           |
+| `ReadRes`     | server → client | read result + chunk data       |
+| `StatReq`     | client → server | get file metadata              |
+| `StatRes`     | server → client | file size, mode, type          |
+| `ReadDirReq`  | client → server | list directory entries         |
+| `ReadDirRes`  | server → client | entry names, types, modes      |
