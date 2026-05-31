@@ -1,0 +1,320 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1450 800" style="background:#f8f9fa;font-family:system-ui,-apple-system,sans-serif">
+  <defs>
+    <filter id="shadow" x="-3" y="-3" width="13" height="13">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.15"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#555"/>
+    </marker>
+    <marker id="arrowDash" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#999"/>
+    </marker>
+    <linearGradient id="gRoot" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#4361ee"/><stop offset="100%" stop-color="#3a56d4"/></linearGradient>
+    <linearGradient id="gServe" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#2ec4b6"/><stop offset="100%" stop-color="#25a99d"/></linearGradient>
+    <linearGradient id="gCp" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#e76f51"/><stop offset="100%" stop-color="#d65a3a"/></linearGradient>
+    <linearGradient id="gCpUpload" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#f4a261"/><stop offset="100%" stop-color="#e8913d"/></linearGradient>
+    <linearGradient id="gCpDir" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#d62828"/><stop offset="100%" stop-color="#b02020"/></linearGradient>
+    <linearGradient id="gHandler" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#e9c46a"/><stop offset="100%" stop-color="#dbb44f"/></linearGradient>
+    <linearGradient id="gNet" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#9b5de5"/><stop offset="100%" stop-color="#8344cd"/></linearGradient>
+    <linearGradient id="gTransfer" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#f15bb5"/><stop offset="100%" stop-color="#d93a9e"/></linearGradient>
+    <linearGradient id="gProtocol" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#6c757d"/><stop offset="100%" stop-color="#5a6268"/></linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1450" height="800" fill="#f8f9fa"/>
+  <line x1="360" y1="0" x2="360" y2="800" stroke="#eee" stroke-width="1" stroke-dasharray="4,4"/>
+  <line x1="920" y1="0" x2="920" y2="800" stroke="#eee" stroke-width="1" stroke-dasharray="4,4"/>
+
+  <!-- Title -->
+  <text x="725" y="760" text-anchor="middle" font-size="12" fill="#999">gcp — Function Call Chain from main()</text>
+
+  <!-- ====== EDGES ====== -->
+
+  <!-- Root → Commands -->
+  <path d="M650,57 L650,75 Q650,85 640,85 L360,85 Q350,85 350,95" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M650,57 L650,75 Q650,85 660,85 L1040,85 Q1050,85 1050,95" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Serve chain -->
+  <path d="M360,137 L360,175" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M360,219 L360,255" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M360,297 L360,335" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M360,379 L360,415" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- workerDispatch → handler bus (y=480) -->
+  <path d="M360,459 L360,480" fill="none" stroke="#555" stroke-width="2"/>
+  <path d="M90,480 L650,480" fill="none" stroke="#555" stroke-width="2"/>
+  <!-- Labels on bus -->
+  <text x="655" y="484" font-size="9" fill="#888">processMsgChan</text>
+  <!-- drops to each handler -->
+  <path d="M90,480 L90,495" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M202,480 L202,495" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M314,480 L314,495" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M426,480 L426,495" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M538,480 L538,495" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M650,480 L650,495" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Handler bus → writeMessage -->
+  <path d="M90,531 L90,548" fill="none" stroke="#888" stroke-width="1.5"/>
+  <path d="M202,531 L202,548" fill="none" stroke="#888" stroke-width="1.5"/>
+  <path d="M314,531 L314,548" fill="none" stroke="#888" stroke-width="1.5"/>
+  <path d="M426,531 L426,548" fill="none" stroke="#888" stroke-width="1.5"/>
+  <path d="M538,531 L538,548" fill="none" stroke="#888" stroke-width="1.5"/>
+  <path d="M650,531 L650,548" fill="none" stroke="#888" stroke-width="1.5"/>
+  <path d="M90,548 L650,548" fill="none" stroke="#888" stroke-width="1.5"/>
+  <path d="M360,548 L360,575" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- writeMessage → protocol -->
+  <path d="M360,617 L360,655" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Cp chain -->
+  <path d="M1040,137 L1040,175" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- copySingle → 4 paths -->
+  <path d="M1040,217 L1040,235 Q1040,245 1030,245 L785,245 Q775,245 775,255" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M1040,217 L1040,245 L965,245 L965,255" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M1040,217 L1040,245 L1140,245 L1140,255" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M1040,217 L1040,235 Q1040,245 1050,245 L1320,245 Q1330,245 1330,255" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- cpToHost → uploadFile -->
+  <path d="M785,295 L785,335" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- cpFromHost → downloadFile -->
+  <path d="M965,295 L965,335" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- cpDirFromHost → walkRemoteDir -->
+  <path d="M1320,295 L1320,335" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Indirect: cpDirToHost → uploadFile (dashed) -->
+  <path d="M1140,295 L1140,315 Q1140,325 1120,325 L840,325 Q820,325 820,335" fill="none" stroke="#999" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrowDash)"/>
+
+  <!-- Indirect: cpDirFromHost → downloadFile (dashed) -->
+  <path d="M1320,295 L1320,315 Q1320,325 1280,325 L1020,325 Q1000,325 1000,335" fill="none" stroke="#999" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrowDash)"/>
+
+  <!-- uploadFile → processChunks -->
+  <path d="M790,375 L790,395 Q790,405 810,405 L920,405 Q930,405 930,415" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- downloadFile → processChunks -->
+  <path d="M975,375 L975,395 Q975,405 960,405 L920,405 L920,415" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- walkRemoteDir → downloadFile -->
+  <path d="M1320,375 L1320,395 Q1320,405 1280,405 L1040,405 Q1020,405 1020,375" fill="none" stroke="#999" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrowDash)"/>
+
+  <!-- processChunks → clientMethods -->
+  <path d="M920,459 L920,495" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- clientMethods → clientPool -->
+  <path d="M920,539 L920,575" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- clientPool → resumeState -->
+  <path d="M920,619 L920,655" fill="none" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- uploadFile → loadResumeState (used by uploadFile, shown as reference) -->
+  <path d="M720,375 L720,395 Q720,410 700,410 L810,410 Q820,410 820,415" fill="none" stroke="#999" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#arrowDash)"/>
+  <text x="705" y="408" font-size="8" fill="#999" text-anchor="end">loadResumeState</text>
+
+  <!-- ====== NODES ====== -->
+
+  <!-- Root -->
+  <g filter="url(#shadow)">
+    <rect x="570" y="15" width="160" height="42" rx="8" fill="url(#gRoot)"/>
+    <text x="650" y="35" text-anchor="middle" fill="#fff" font-size="14" font-weight="700">main()</text>
+    <text x="650" y="50" text-anchor="middle" fill="rgba(255,255,255,0.75)" font-size="9">cmd/asyncio/main.go:15</text>
+  </g>
+
+  <!-- Level 1 - Commands -->
+  <!-- serveCmd -->
+  <g filter="url(#shadow)">
+    <rect x="270" y="95" width="180" height="42" rx="6" fill="url(#gServe)"/>
+    <text x="360" y="115" text-anchor="middle" fill="#fff" font-size="13" font-weight="600">serveCmd</text>
+    <text x="360" y="130" text-anchor="middle" fill="rgba(255,255,255,0.75)" font-size="9">serve.go:436</text>
+  </g>
+
+  <!-- cpCmd -->
+  <g filter="url(#shadow)">
+    <rect x="950" y="95" width="180" height="42" rx="6" fill="url(#gCp)"/>
+    <text x="1040" y="115" text-anchor="middle" fill="#fff" font-size="13" font-weight="600">cpCmd</text>
+    <text x="1040" y="130" text-anchor="middle" fill="rgba(255,255,255,0.75)" font-size="9">cp.go:270</text>
+  </g>
+
+  <!-- Level 2 -->
+  <!-- newServer + gnet.Run -->
+  <g filter="url(#shadow)">
+    <rect x="250" y="175" width="220" height="44" rx="6" fill="url(#gServe)"/>
+    <text x="360" y="195" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">newServer + gnet.Run</text>
+    <text x="360" y="212" text-anchor="middle" fill="rgba(255,255,255,0.75)" font-size="9">serve.go:441</text>
+  </g>
+
+  <!-- copySingle -->
+  <g filter="url(#shadow)">
+    <rect x="950" y="175" width="180" height="42" rx="6" fill="url(#gCp)"/>
+    <text x="1040" y="195" text-anchor="middle" fill="#fff" font-size="13" font-weight="600">copySingle</text>
+    <text x="1040" y="210" text-anchor="middle" fill="rgba(255,255,255,0.75)" font-size="9">cp.go:149</text>
+  </g>
+
+  <!-- Level 3 -->
+  <!-- OnTraffic -->
+  <g filter="url(#shadow)">
+    <rect x="270" y="255" width="180" height="42" rx="6" fill="url(#gServe)"/>
+    <text x="360" y="275" text-anchor="middle" fill="#fff" font-size="13" font-weight="600">OnTraffic</text>
+    <text x="360" y="290" text-anchor="middle" fill="rgba(255,255,255,0.75)" font-size="9">serve.go:51</text>
+  </g>
+
+  <!-- 4 cp paths -->
+  <!-- cpOneFileToHost -->
+  <g filter="url(#shadow)">
+    <rect x="710" y="255" width="150" height="40" rx="6" fill="url(#gCpUpload)"/>
+    <text x="785" y="273" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">cpOneFileToHost</text>
+    <text x="785" y="288" text-anchor="middle" fill="rgba(255,255,255,0.75)" font-size="9">cp_to_host.go:13</text>
+  </g>
+
+  <!-- cpOneFileFromHost -->
+  <g filter="url(#shadow)">
+    <rect x="885" y="255" width="160" height="40" rx="6" fill="url(#gCp)"/>
+    <text x="965" y="273" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">cpOneFileFromHost</text>
+    <text x="965" y="288" text-anchor="middle" fill="rgba(255,255,255,0.75)" font-size="9">cp_from_host.go:150</text>
+  </g>
+
+  <!-- cpDirToHost -->
+  <g filter="url(#shadow)">
+    <rect x="1065" y="255" width="150" height="40" rx="6" fill="url(#gCpDir)"/>
+    <text x="1140" y="273" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">cpDirToHost</text>
+    <text x="1140" y="288" text-anchor="middle" fill="rgba(255,255,255,0.75)" font-size="9">cp_dir.go:16</text>
+  </g>
+
+  <!-- cpDirFromHost -->
+  <g filter="url(#shadow)">
+    <rect x="1240" y="255" width="160" height="40" rx="6" fill="url(#gCpDir)"/>
+    <text x="1320" y="273" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">cpDirFromHost</text>
+    <text x="1320" y="288" text-anchor="middle" fill="rgba(255,255,255,0.75)" font-size="9">cp_from_host_dir.go:17</text>
+  </g>
+
+  <!-- Level 4 -->
+  <!-- asyncio.ReadMessage -->
+  <g filter="url(#shadow)">
+    <rect x="250" y="335" width="220" height="44" rx="6" fill="url(#gServe)"/>
+    <text x="360" y="355" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">asyncio.ReadMessage</text>
+    <text x="360" y="372" text-anchor="middle" fill="rgba(255,255,255,0.75)" font-size="9">asyncio/message.go:187</text>
+  </g>
+
+  <!-- uploadFile -->
+  <g filter="url(#shadow)">
+    <rect x="720" y="335" width="140" height="40" rx="6" fill="url(#gCpUpload)"/>
+    <text x="790" y="353" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">uploadFile</text>
+    <text x="790" y="368" text-anchor="middle" fill="rgba(255,255,255,0.75)" font-size="9">cp_to_host.go:41</text>
+  </g>
+
+  <!-- downloadFile -->
+  <g filter="url(#shadow)">
+    <rect x="905" y="335" width="140" height="40" rx="6" fill="url(#gCp)"/>
+    <text x="975" y="353" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">downloadFile</text>
+    <text x="975" y="368" text-anchor="middle" fill="rgba(255,255,255,0.75)" font-size="9">cp_from_host.go:20</text>
+  </g>
+
+  <!-- walkRemoteDir -->
+  <g filter="url(#shadow)">
+    <rect x="1240" y="335" width="160" height="40" rx="6" fill="url(#gCpDir)"/>
+    <text x="1320" y="353" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">walkRemoteDir</text>
+    <text x="1320" y="368" text-anchor="middle" fill="rgba(255,255,255,0.75)" font-size="9">cp_from_host_dir.go:41</text>
+  </g>
+
+  <!-- Level 5 -->
+  <!-- worker dispatch -->
+  <g filter="url(#shadow)">
+    <rect x="250" y="415" width="220" height="44" rx="6" fill="url(#gServe)"/>
+    <text x="360" y="435" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">worker dispatch</text>
+    <text x="360" y="452" text-anchor="middle" fill="rgba(255,255,255,0.75)" font-size="9">serve.go:72 (n goroutines)</text>
+  </g>
+
+  <!-- processChunks -->
+  <g filter="url(#shadow)">
+    <rect x="825" y="415" width="190" height="44" rx="6" fill="url(#gTransfer)"/>
+    <text x="920" y="435" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">processChunks</text>
+    <text x="920" y="452" text-anchor="middle" fill="rgba(255,255,255,0.75)" font-size="9">transfer.go:176 (semaphore)</text>
+  </g>
+
+  <!-- Level 6 - Handlers -->
+  <g filter="url(#shadow)">
+    <rect x="42" y="495" width="96" height="36" rx="5" fill="url(#gHandler)"/>
+    <text x="90" y="512" text-anchor="middle" fill="#333" font-size="11" font-weight="600">create</text>
+    <text x="90" y="524" text-anchor="middle" fill="#666" font-size="8">serve.go:127</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="154" y="495" width="96" height="36" rx="5" fill="url(#gHandler)"/>
+    <text x="202" y="512" text-anchor="middle" fill="#333" font-size="11" font-weight="600">write</text>
+    <text x="202" y="524" text-anchor="middle" fill="#666" font-size="8">serve.go:200</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="266" y="495" width="96" height="36" rx="5" fill="url(#gHandler)"/>
+    <text x="314" y="512" text-anchor="middle" fill="#333" font-size="11" font-weight="600">read</text>
+    <text x="314" y="524" text-anchor="middle" fill="#666" font-size="8">serve.go:233</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="378" y="495" width="96" height="36" rx="5" fill="url(#gHandler)"/>
+    <text x="426" y="512" text-anchor="middle" fill="#333" font-size="11" font-weight="600">stat</text>
+    <text x="426" y="524" text-anchor="middle" fill="#666" font-size="8">serve.go:327</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="490" y="495" width="96" height="36" rx="5" fill="url(#gHandler)"/>
+    <text x="538" y="512" text-anchor="middle" fill="#333" font-size="11" font-weight="600">readDir</text>
+    <text x="538" y="524" text-anchor="middle" fill="#666" font-size="8">serve.go:282</text>
+  </g>
+  <g filter="url(#shadow)">
+    <rect x="602" y="495" width="96" height="36" rx="5" fill="url(#gHandler)"/>
+    <text x="650" y="512" text-anchor="middle" fill="#333" font-size="11" font-weight="600">hash</text>
+    <text x="650" y="524" text-anchor="middle" fill="#666" font-size="8">serve.go:371</text>
+  </g>
+
+  <!-- clientMethods -->
+  <g filter="url(#shadow)">
+    <rect x="810" y="495" width="220" height="44" rx="6" fill="url(#gNet)"/>
+    <text x="920" y="514" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">cc.Create / cc.Write / cc.Read</text>
+    <text x="920" y="531" text-anchor="middle" fill="rgba(255,255,255,0.75)" font-size="9">cc.Stat / cc.ReadDir / cc.Hash</text>
+  </g>
+
+  <!-- Level 7 -->
+  <!-- asyncio.WriteMessage -->
+  <g filter="url(#shadow)">
+    <rect x="250" y="575" width="220" height="42" rx="6" fill="url(#gNet)"/>
+    <text x="360" y="595" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">asyncio.WriteMessage</text>
+    <text x="360" y="610" text-anchor="middle" fill="rgba(255,255,255,0.75)" font-size="9">asyncio/message.go:220</text>
+  </g>
+
+  <!-- clientPool -->
+  <g filter="url(#shadow)">
+    <rect x="810" y="575" width="220" height="44" rx="6" fill="url(#gNet)"/>
+    <text x="920" y="595" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">client.go connection pool</text>
+    <text x="920" y="612" text-anchor="middle" fill="rgba(255,255,255,0.75)" font-size="9">handleSend / handleReceive</text>
+  </g>
+
+  <!-- Level 8 -->
+  <!-- protocol layer -->
+  <g filter="url(#shadow)">
+    <rect x="250" y="655" width="220" height="42" rx="6" fill="url(#gProtocol)"/>
+    <text x="360" y="675" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">protocol: CBOR + magic bytes</text>
+    <text x="360" y="690" text-anchor="middle" fill="rgba(255,255,255,0.75)" font-size="9">asyncio/message.go · implement.go</text>
+  </g>
+
+  <!-- resumeState -->
+  <g filter="url(#shadow)">
+    <rect x="810" y="655" width="220" height="44" rx="6" fill="url(#gTransfer)"/>
+    <text x="920" y="675" text-anchor="middle" fill="#fff" font-size="11" font-weight="600">loadResumeState / saveResumeState</text>
+    <text x="920" y="692" text-anchor="middle" fill="rgba(255,255,255,0.75)" font-size="9">transfer.go:53 · verifyFileHash</text>
+  </g>
+
+  <!-- Legend -->
+  <g transform="translate(1090, 700)">
+    <text x="0" y="0" font-size="10" fill="#888" font-weight="600">Legend</text>
+    <rect x="0" y="6" width="12" height="12" rx="2" fill="url(#gServe)"/>
+    <text x="16" y="16" font-size="9" fill="#888">Serve path</text>
+    <rect x="0" y="22" width="12" height="12" rx="2" fill="url(#gCp)"/>
+    <text x="16" y="32" font-size="9" fill="#888">CP path (download)</text>
+    <rect x="0" y="38" width="12" height="12" rx="2" fill="url(#gCpUpload)"/>
+    <text x="16" y="48" font-size="9" fill="#888">CP path (upload)</text>
+    <rect x="0" y="54" width="12" height="12" rx="2" fill="url(#gCpDir)"/>
+    <text x="16" y="64" font-size="9" fill="#888">CP path (dir ops)</text>
+    <rect x="0" y="70" width="12" height="12" rx="2" fill="url(#gHandler)"/>
+    <text x="16" y="80" font-size="9" fill="#888">Server handler</text>
+    <rect x="0" y="86" width="12" height="12" rx="2" fill="url(#gNet)"/>
+    <text x="16" y="96" font-size="9" fill="#888">Network / client</text>
+  </g>
+</svg>
