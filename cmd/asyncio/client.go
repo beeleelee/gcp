@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"io/fs"
 	"net"
 	"sync"
@@ -13,7 +15,11 @@ import (
 
 	"github.com/beeleelee/gcp/asyncio"
 	"github.com/beeleelee/gcp/logger"
+	"golang.org/x/crypto/ssh"
 )
+
+// randReader is used for SSH signing operations.
+var randReader = rand.Reader
 
 // clientWrappedMsg pairs a decoded protocol message with its payload.
 type clientWrappedMsg struct {
@@ -49,6 +55,8 @@ type copierClient struct {
 	batch         int
 	timeout       time.Duration
 	useChecksum   bool
+	authToken     string
+	authUser      string
 	msgIn         chan clientRequestMsg
 	sendHandle    chan clientWrappedMsg
 	receiveHandle chan clientWrappedMsg
@@ -66,7 +74,7 @@ func newClient(ctx context.Context, target string, batch int, timeout time.Durat
 		receiveHandle: make(chan clientWrappedMsg),
 	}
 	cc.ctx, cc.cancel = context.WithCancel(ctx)
-	if err := cc.dial(); err != nil {
+	if err := cc.dialAndAuth(); err != nil {
 		cc.cancel()
 		return nil, err
 	}
@@ -101,14 +109,72 @@ func (cc *copierClient) processMsg() {
 
 }
 
-// dial probes one initial connection (fail-fast),
-// then spawns batch supervised goroutines with reconnect.
-func (cc *copierClient) dial() error {
+// dialAndAuth performs the full SSH challenge-response auth on a temporary
+// connection to obtain a session token, then spawns batch connection goroutines
+// that re-auth with just the token.
+func (cc *copierClient) dialAndAuth() error {
+	signer, pubKey, err := clientSigner()
+	if err != nil {
+		return fmt.Errorf("auth: %w", err)
+	}
+
 	conn, err := net.Dial("tcp", cc.target)
 	if err != nil {
 		return fmt.Errorf("dial %s: %w", cc.target, err)
 	}
-	conn.Close()
+	defer conn.Close()
+
+	pubKeyBytes := pubKey.Marshal()
+
+	// Step 1: send public key, receive challenge
+	if err := asyncio.WriteMessage(conn, &asyncio.AuthReq{
+		ID:     1,
+		PubKey: pubKeyBytes,
+	}, nil); err != nil {
+		return fmt.Errorf("auth send pubkey: %w", err)
+	}
+
+	resp, err := readResp(conn)
+	if err != nil {
+		return fmt.Errorf("auth recv challenge: %w", err)
+	}
+	challengeRes, ok := resp.(*asyncio.AuthRes)
+	if !ok || challengeRes.Success {
+		return fmt.Errorf("unexpected auth response")
+	}
+
+	// Step 2: sign the challenge and send back
+	challenge := challengeRes.Challenge
+	sig, err := signer.Sign(randReader, challenge)
+	if err != nil {
+		return fmt.Errorf("auth sign challenge: %w", err)
+	}
+	sigBytes := ssh.Marshal(sig)
+
+	if err := asyncio.WriteMessage(conn, &asyncio.AuthReq{
+		ID:        2,
+		PubKey:    pubKeyBytes,
+		Signature: sigBytes,
+	}, nil); err != nil {
+		return fmt.Errorf("auth send signature: %w", err)
+	}
+
+	resp, err = readResp(conn)
+	if err != nil {
+		return fmt.Errorf("auth recv result: %w", err)
+	}
+	authRes, ok := resp.(*asyncio.AuthRes)
+	if !ok || !authRes.Success {
+		errMsg := "auth denied"
+		if ok && authRes.Error != "" {
+			errMsg = authRes.Error
+		}
+		return fmt.Errorf("auth: %s", errMsg)
+	}
+
+	cc.authToken = authRes.Token
+	cc.authUser = authRes.User
+
 	for i := 0; i < cc.batch; i++ {
 		go cc.runConn()
 	}
@@ -116,7 +182,7 @@ func (cc *copierClient) dial() error {
 }
 
 // runConn maintains one connection in the pool with automatic reconnection.
-// On I/O error it closes and re-dials with exponential backoff.
+// Each new connection performs a token-based auth before joining the pool.
 func (cc *copierClient) runConn() {
 	backoff := 100 * time.Millisecond
 	const maxBackoff = 5 * time.Second
@@ -136,6 +202,13 @@ func (cc *copierClient) runConn() {
 		}
 		backoff = 100 * time.Millisecond
 
+		// Token auth before joining the pool
+		if err := cc.tokenAuth(conn); err != nil {
+			logger.Log.Debug("token auth failed, closing connection", "err", err)
+			conn.Close()
+			continue
+		}
+
 		var wg sync.WaitGroup
 		wg.Add(2)
 		go func() {
@@ -152,6 +225,55 @@ func (cc *copierClient) runConn() {
 			return
 		}
 	}
+}
+
+// tokenAuth performs a fast session-token authentication on an already-dialed
+// connection. It sends AuthReq{Token} and expects AuthRes{Success: true}.
+func (cc *copierClient) tokenAuth(conn net.Conn) error {
+	if err := asyncio.WriteMessage(conn, &asyncio.AuthReq{
+		ID:    0,
+		Token: cc.authToken,
+	}, nil); err != nil {
+		return err
+	}
+	resp, err := readResp(conn)
+	if err != nil {
+		return err
+	}
+	authRes, ok := resp.(*asyncio.AuthRes)
+	if !ok || !authRes.Success {
+		return fmt.Errorf("token auth rejected")
+	}
+	return nil
+}
+
+// readResp reads one complete protocol frame from a net.Conn. It is used
+// for synchronous auth exchanges before the channel-based pipeline starts.
+func readResp(conn net.Conn) (asyncio.MSG, error) {
+	head := make([]byte, asyncio.HeadSize)
+	if _, err := io.ReadFull(conn, head); err != nil {
+		return nil, err
+	}
+	if !asyncio.MagicNumberCheck(head[0], head[1]) {
+		return nil, asyncio.ErrBadProtocol
+	}
+	msg, msgSize, payloadSize, err := asyncio.DecodePre(head)
+	if err != nil {
+		return nil, err
+	}
+	body := make([]byte, msgSize)
+	if _, err := io.ReadFull(conn, body); err != nil {
+		return nil, err
+	}
+	if err := msg.Decode(body); err != nil {
+		return nil, err
+	}
+	if payloadSize > 0 {
+		if _, err := io.CopyN(io.Discard, conn, int64(payloadSize)); err != nil {
+			return nil, err
+		}
+	}
+	return msg, nil
 }
 
 // handleSend
