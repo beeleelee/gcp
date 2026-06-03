@@ -58,13 +58,19 @@ var lsCmd = &cli.Command{
 			Name:  "human-readable, h",
 			Usage: "print human-readable sizes (with -l)",
 		},
+		&cli.IntFlag{
+			Name:  "port",
+			Value: 1717,
+			Usage: "remote port",
+		},
 	},
 	Action: func(c *cli.Context) error {
 		if c.Args().Len() < 1 {
 			return fmt.Errorf("usage: gcp ls [--long] <remote_path>")
 		}
 
-		hostPort, path, err := parseRemoteAddr(c.Args().First())
+		port := fmt.Sprintf("%d", c.Int("port"))
+		hostPort, user, path, identityFile, _, err := parseRemoteAddr(c.Args().First(), port)
 		if err != nil {
 			return err
 		}
@@ -72,7 +78,7 @@ var lsCmd = &cli.Command{
 		long := c.Bool("long")
 		human := c.Bool("human-readable")
 
-		cc, err := newClient(c.Context, hostPort, 1, 0, false)
+		cc, err := newClient(c.Context, hostPort, user, identityFile, 1, 0, false)
 		if err != nil {
 			return err
 		}

@@ -1,14 +1,13 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"net"
 	"os"
+	"os/user"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -17,50 +16,12 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-// isRemoteAddr returns true if s matches the "host:path" pattern used
-// to reference remote files. The heuristic is simply the presence of a
-// colon, which is sufficient since local paths on Unix rarely contain one.
+// isRemoteAddr returns true if s matches the "host:path" or "user@host:path"
+// pattern used to reference remote files. The heuristic is simply the
+// presence of a colon, which is sufficient since local paths on Unix
+// rarely contain one.
 func isRemoteAddr(s string) bool {
 	return strings.Contains(s, ":")
-}
-
-// lookupHosts resolves a hostname using /etc/hosts (ignoring DNS). This
-// is used when the host part of a remote address is not a raw IP.
-func lookupHosts(hostname string) (string, error) {
-	f, err := os.Open("/etc/hosts")
-	if err != nil {
-		return "", fmt.Errorf("cannot open /etc/hosts: %w", err)
-	}
-	defer f.Close()
-
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if idx := strings.Index(line, "#"); idx >= 0 {
-			line = line[:idx]
-		}
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
-			continue
-		}
-		ip := fields[0]
-		if strings.Contains(ip, ":") {
-			continue
-		}
-		if net.ParseIP(ip) == nil {
-			continue
-		}
-		for _, name := range fields[1:] {
-			if name == hostname {
-				return ip, nil
-			}
-		}
-	}
-	return "", fmt.Errorf("hostname %q not found in /etc/hosts", hostname)
 }
 
 // isRemoteDir checks whether a remote path is a directory by issuing a
@@ -88,65 +49,68 @@ func parseCompressionFlag(s string) uint8 {
 	}
 }
 
-// parseRemoteAddr splits a "host:port/path" remote address into its
-// components. The port defaults to 1717 if omitted. Host resolution is
-// done via /etc/hosts (not DNS). IPv6 is explicitly unsupported.
-func parseRemoteAddr(s string) (hostPort, path string, err error) {
-	colonIdx := strings.Index(s, ":")
+// parseRemoteAddr splits a "user@host:/path" or "host:/path" remote address
+// into hostPort, user, path, identityFile, and hostAlias. The defaultPort is
+// used when neither --port nor SSH config specify one. The host is looked up
+// in SSH config for HostName resolution, Port, User, and IdentityFile. If no
+// SSH config match, the host is used as-is.
+func parseRemoteAddr(s string, defaultPort string) (hostPort, userName, path, identityFile, hostAlias string, err error) {
+	// Split on last @ for optional user.
+	rest := s
+	if atIdx := strings.LastIndex(s, "@"); atIdx >= 0 {
+		userName = s[:atIdx]
+		rest = s[atIdx+1:]
+	}
+
+	colonIdx := strings.Index(rest, ":")
 	if colonIdx < 0 {
-		return "", "", fmt.Errorf("invalid remote address %q: missing colon", s)
+		return "", "", "", "", "", fmt.Errorf("invalid remote address %q: missing colon", s)
 	}
 
-	host := s[:colonIdx]
+	host := rest[:colonIdx]
 	if host == "" {
-		return "", "", fmt.Errorf("invalid remote address %q: empty host", s)
+		return "", "", "", "", "", fmt.Errorf("invalid remote address %q: empty host", s)
 	}
+	hostAlias = host
 
-	rest := s[colonIdx+1:]
+	path = rest[colonIdx+1:]
 
-	var i int
-	for i = 0; i < len(rest); i++ {
-		if rest[i] < '0' || rest[i] > '9' {
-			break
+	// Look up host in SSH config for HostName, Port, User, IdentityFile.
+	entry := sshConfigLookup(host)
+
+	hostName := host
+	port := defaultPort
+
+	if entry != nil {
+		if entry.HostName != "" {
+			hostName = entry.HostName
+		}
+		if entry.Port != "" {
+			port = entry.Port
+		}
+		if userName == "" && entry.User != "" {
+			userName = entry.User
+		}
+		if entry.IdentityFile != "" {
+			identityFile = entry.IdentityFile
 		}
 	}
 
-	port := "1717"
-	path = rest
-
-	if i > 0 {
-		port = rest[:i]
-		rem := rest[i:]
-		switch {
-		case len(rem) == 0:
-			path = ""
-		case rem[0] == '/':
-			path = rem
-		case rem[0] == ':':
-			path = rem[1:]
-		default:
-			return "", "", fmt.Errorf("invalid remote address %q: unexpected %q after port", s, rem[:1])
+	// User fallback: explicit > SSH config > current OS user.
+	if userName == "" {
+		current, uErr := user.Current()
+		if uErr != nil {
+			return "", "", "", "", "", fmt.Errorf("cannot determine current user: %w", uErr)
 		}
+		userName = current.Username
 	}
 
-	if _, err := strconv.Atoi(port); err != nil {
-		return "", "", fmt.Errorf("invalid port %q in remote address %q", port, s)
+	if net.ParseIP(hostName) == nil && strings.Contains(hostName, ":") {
+		return "", "", "", "", "", fmt.Errorf("IPv6 not supported: %q", hostName)
 	}
 
-	ip := net.ParseIP(host)
-	if ip == nil {
-		resolved, err := lookupHosts(host)
-		if err != nil {
-			return "", "", fmt.Errorf("cannot resolve host %q: %w", host, err)
-		}
-		host = resolved
-	} else {
-		if strings.Contains(host, ":") {
-			return "", "", fmt.Errorf("IPv6 not supported: %q", host)
-		}
-	}
-
-	return net.JoinHostPort(host, port), path, nil
+	hostPort = net.JoinHostPort(hostName, port)
+	return hostPort, userName, path, identityFile, hostAlias, nil
 }
 
 // copySingle is the 4-way router that decides whether to upload, download,
@@ -173,7 +137,7 @@ func copySingle(
 			if !dstRemote {
 				return errors.New("downloading directories is not yet supported")
 			}
-			_, remotePath, err := parseRemoteAddr(dst)
+			_, _, remotePath, _, _, err := parseRemoteAddr(dst, "1717")
 			if err != nil {
 				return err
 			}
@@ -188,7 +152,7 @@ func copySingle(
 
 	switch {
 	case srcRemote && !dstRemote:
-		_, remotePath, err := parseRemoteAddr(src)
+		_, _, remotePath, _, _, err := parseRemoteAddr(src, "1717")
 		if err != nil {
 			return err
 		}
@@ -211,7 +175,7 @@ func copySingle(
 			chunkSize, maxRetries, useSha256, compressionAlgo)
 
 	case !srcRemote && dstRemote:
-		_, remotePath, err := parseRemoteAddr(dst)
+		_, _, remotePath, _, _, err := parseRemoteAddr(dst, "1717")
 		if err != nil {
 			return err
 		}
@@ -276,6 +240,15 @@ var cpCmd = &cli.Command{
 			Value: "",
 			Usage: "compress chunk payloads (`gzip` or empty for none)",
 		},
+		&cli.IntFlag{
+			Name:  "port",
+			Value: 1717,
+			Usage: "remote port",
+		},
+		&cli.StringFlag{
+			Name:  "identity-file",
+			Usage: "SSH identity file (overrides SSH config IdentityFile)",
+		},
 	},
 	Action: func(c *cli.Context) (err error) {
 		ctx := c.Context
@@ -303,11 +276,12 @@ var cpCmd = &cli.Command{
 		var expanded []string
 		if srcRemote {
 			for _, s := range sources {
-				hostPort, path, pErr := parseRemoteAddr(s)
+				hostPort, user, path, identityFile, hostAlias, pErr := parseRemoteAddr(s, fmt.Sprintf("%d", c.Int("port")))
 				if pErr != nil {
 					return pErr
 				}
-				matches, gErr := expandRemoteSources(ctx, hostPort, path,
+				_ = identityFile
+				matches, gErr := expandRemoteSources(ctx, hostPort, user, hostAlias, path,
 					c.Duration("timeout"), c.Bool("checksum"))
 				if gErr != nil {
 					return gErr
@@ -340,13 +314,17 @@ var cpCmd = &cli.Command{
 		}
 
 		// Create a shared client for all file transfers.
-		hostPort := ""
+		port := fmt.Sprintf("%d", c.Int("port"))
+		hostPort, user, _, identityFile := "", "", "", ""
 		if srcRemote {
-			hostPort, _, _ = parseRemoteAddr(sources[0])
+			hostPort, user, _, identityFile, _, _ = parseRemoteAddr(sources[0], port)
 		} else {
-			hostPort, _, _ = parseRemoteAddr(dst)
+			hostPort, user, _, identityFile, _, _ = parseRemoteAddr(dst, port)
 		}
-		cc, err := newClient(ctx, hostPort, c.Int("batch"), c.Duration("timeout"), c.Bool("checksum"))
+		if c.String("identity-file") != "" {
+			identityFile = c.String("identity-file")
+		}
+		cc, err := newClient(ctx, hostPort, user, identityFile, c.Int("batch"), c.Duration("timeout"), c.Bool("checksum"))
 		if err != nil {
 			return fmt.Errorf("connect to %s: %w", hostPort, err)
 		}
@@ -362,7 +340,7 @@ var cpCmd = &cli.Command{
 			target := dst
 			if multiple {
 				if srcRemote {
-					_, rPath, _ := parseRemoteAddr(src)
+					_, _, _, rPath, _, _ := parseRemoteAddr(src, port)
 					target = filepath.Join(dst, filepath.Base(rPath))
 				} else {
 					target = filepath.Join(dst, filepath.Base(src))

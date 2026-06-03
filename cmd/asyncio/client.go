@@ -57,18 +57,21 @@ type copierClient struct {
 	useChecksum   bool
 	authToken     string
 	authUser      string
+	identityFile  string
 	msgIn         chan clientRequestMsg
 	sendHandle    chan clientWrappedMsg
 	receiveHandle chan clientWrappedMsg
 }
 
-func newClient(ctx context.Context, target string, batch int, timeout time.Duration, useChecksum bool) (*copierClient, error) {
+func newClient(ctx context.Context, target, user, identityFile string, batch int, timeout time.Duration, useChecksum bool) (*copierClient, error) {
 	cc := &copierClient{
 		ctx:           ctx,
 		target:        target,
 		batch:         batch,
 		timeout:       timeout,
 		useChecksum:   useChecksum,
+		authUser:      user,
+		identityFile:  identityFile,
 		msgIn:         make(chan clientRequestMsg),
 		sendHandle:    make(chan clientWrappedMsg),
 		receiveHandle: make(chan clientWrappedMsg),
@@ -113,7 +116,7 @@ func (cc *copierClient) processMsg() {
 // connection to obtain a session token, then spawns batch connection goroutines
 // that re-auth with just the token.
 func (cc *copierClient) dialAndAuth() error {
-	signer, pubKey, err := clientSigner("")
+	signer, pubKey, err := clientSigner(cc.identityFile)
 	if err != nil {
 		return fmt.Errorf("auth: %w", err)
 	}
@@ -129,6 +132,7 @@ func (cc *copierClient) dialAndAuth() error {
 	// Step 1: send public key, receive challenge
 	if err := asyncio.WriteMessage(conn, &asyncio.AuthReq{
 		ID:     1,
+		User:   cc.authUser,
 		PubKey: pubKeyBytes,
 	}, nil); err != nil {
 		return fmt.Errorf("auth send pubkey: %w", err)
@@ -153,6 +157,7 @@ func (cc *copierClient) dialAndAuth() error {
 
 	if err := asyncio.WriteMessage(conn, &asyncio.AuthReq{
 		ID:        2,
+		User:      cc.authUser,
 		PubKey:    pubKeyBytes,
 		Signature: sigBytes,
 	}, nil); err != nil {

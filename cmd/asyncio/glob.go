@@ -64,15 +64,15 @@ func expandLocalSource(pattern string, recursive bool) ([]string, error) {
 
 // expandRemoteSources resolves a remote glob pattern by listing the parent
 // directory on the server and matching entries locally. Returns addresses
-// in "host:port/path" format suitable for the remote address parser.
+// in "user@host:/path" format for display to the user.
 func expandRemoteSources(
 	ctx context.Context,
-	hostPort, remotePath string,
+	hostPort, user, hostAlias, remotePath string,
 	timeout time.Duration,
 	useChecksum bool,
 ) ([]string, error) {
 	if !hasGlob(remotePath) {
-		return []string{hostPort + remotePath}, nil
+		return []string{fmt.Sprintf("%s@%s:%s", user, hostAlias, remotePath)}, nil
 	}
 
 	parent, pattern := path.Split(remotePath)
@@ -80,7 +80,7 @@ func expandRemoteSources(
 		parent = "/"
 	}
 
-	cc, err := newClient(ctx, hostPort, 1, timeout, useChecksum)
+	cc, err := newClient(ctx, hostPort, user, "", 1, timeout, useChecksum)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +99,7 @@ func expandRemoteSources(
 	for _, entry := range dirRes.Entries {
 		ok, _ := path.Match(pattern, entry.Name)
 		if ok {
-			result = append(result, hostPort+path.Join(parent, entry.Name))
+			result = append(result, fmt.Sprintf("%s@%s:%s", user, hostAlias, path.Join(parent, entry.Name)))
 		}
 	}
 	if len(result) == 0 {
