@@ -17,6 +17,7 @@ func main() {
 	local := []*cli.Command{
 		serveCmd,
 		cpCmd,
+		lsCmd,
 	}
 	app := &cli.App{
 		Name: "gcp",

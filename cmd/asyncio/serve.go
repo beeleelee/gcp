@@ -313,9 +313,11 @@ func (c *copierServer) readDirSuccess(conn gnet.Conn, req *asyncio.ReadDirReq, e
 			}
 		} else {
 			res.Entries[i] = asyncio.DirEntry{
-				Name:  e.Name(),
-				IsDir: e.IsDir(),
-				Mode:  uint32(info.Mode()),
+				Name:    e.Name(),
+				IsDir:   e.IsDir(),
+				Mode:    uint32(info.Mode()),
+				Size:    info.Size(),
+				ModTime: info.ModTime().Unix(),
 			}
 		}
 	}

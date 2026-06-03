@@ -124,9 +124,11 @@ type StatRes struct {
 // DirEntry represents a single entry in a remote directory listing, analogous
 // to os.FileInfo.
 type DirEntry struct {
-	IsDir bool
-	Mode  uint32
-	Name  string
+	IsDir   bool
+	Mode    uint32
+	Name    string
+	Size    int64
+	ModTime int64
 }
 
 // ReadDirReq asks the server to list the contents of a remote directory.
