@@ -189,6 +189,7 @@ type HashRes struct {
 // back in a second AuthReq with Signature populated.
 type AuthReq struct {
 	ID        int64
+	User      string // client-claimed username from user@host
 	PubKey    []byte // SSH public key wire format (first message)
 	Signature []byte // signature of the challenge (second message)
 	Token     string // session token for fast re-auth on new connections
