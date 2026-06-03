@@ -84,7 +84,7 @@ var lsCmd = &cli.Command{
 		}
 		statRes := res.msg.(*asyncio.StatRes)
 		if !statRes.Success {
-			return fmt.Errorf("stat failed for %s", path)
+			return fmt.Errorf("stat failed for %s: %s", path, statRes.Error)
 		}
 
 		if statRes.IsDir {
@@ -94,7 +94,7 @@ var lsCmd = &cli.Command{
 			}
 			dirRes := res.msg.(*asyncio.ReadDirRes)
 			if !dirRes.Success {
-				return fmt.Errorf("readdir failed for %s", path)
+				return fmt.Errorf("readdir failed for %s: %s", path, dirRes.Error)
 			}
 
 			sort.Slice(dirRes.Entries, func(i, j int) bool {

@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"time"
 
+	"github.com/beeleelee/gcp/asyncio"
 	"github.com/beeleelee/gcp/logger"
 )
 
@@ -57,9 +59,13 @@ func uploadFile(
 		}
 		sfd.Close()
 
-		_, err = cc.Create(target, info.Size(), info.Mode().Perm())
+		res, err := cc.Create(target, info.Size(), info.Mode().Perm())
 		if err != nil {
 			return err
+		}
+		createRes := res.msg.(*asyncio.CreateRes)
+		if !createRes.Success {
+			return fmt.Errorf("remote create failed: %s", createRes.Error)
 		}
 		logger.Log.Debug("upload: fresh transfer, state not found")
 	} else {
@@ -119,9 +125,16 @@ func uploadFileChunk(ctx context.Context, cc *copierClient, sfd *os.File, target
 			return ctx.Err()
 		default:
 		}
-		_, writeErr = cc.Write(target, off, buf)
-		if writeErr == nil {
-			return nil
+		res, wErr := cc.Write(target, off, buf)
+		if wErr != nil {
+			writeErr = wErr
+		} else {
+			writeRes := res.msg.(*asyncio.WriteRes)
+			if !writeRes.Success {
+				writeErr = fmt.Errorf("remote write failed at offset %d: %s", off, writeRes.Error)
+			} else {
+				return nil
+			}
 		}
 		if attempt < maxRetries {
 			backoff := time.Duration(100<<attempt) * time.Millisecond

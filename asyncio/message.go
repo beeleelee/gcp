@@ -60,10 +60,12 @@ type CreateReq struct {
 }
 
 // CreateRes is the server's response to a CreateReq. Success indicates whether
-// the remote file or directory was prepared.
+// the remote file or directory was prepared. Error contains the reason on
+// failure.
 type CreateRes struct {
 	ID      int64
 	Success bool
+	Error   string
 }
 
 // WriteReq carries a chunk of file data to the server. Path identifies the
@@ -78,11 +80,12 @@ type WriteReq struct {
 }
 
 // WriteRes reports the number of bytes the server wrote. N lets the client
-// detect partial writes.
+// detect partial writes. Error contains the reason on failure.
 type WriteRes struct {
 	ID      int64
 	Success bool
 	N       int32
+	Error   string
 }
 
 // ReadReq asks the server to return a chunk of a remote file. Offset and Size
@@ -97,12 +100,14 @@ type ReadReq struct {
 
 // ReadRes carries the requested file data in the payload. N is the number of
 // bytes actually read (may be less than the requested Size at EOF), and
-// Checksum is the CRC-32 IEEE of the payload.
+// Checksum is the CRC-32 IEEE of the payload. Error contains the reason on
+// failure.
 type ReadRes struct {
 	ID       int64
 	Success  bool
 	N        int64
 	Checksum uint32
+	Error    string
 }
 
 // StatReq queries metadata for a remote path.
@@ -112,13 +117,14 @@ type StatReq struct {
 }
 
 // StatRes returns file metadata: size, permission mode, and whether the path
-// is a directory.
+// is a directory. Error contains the reason on failure.
 type StatRes struct {
 	ID      int64
 	Success bool
 	Size    int64
 	Mode    uint32
 	IsDir   bool
+	Error   string
 }
 
 // DirEntry represents a single entry in a remote directory listing, analogous
@@ -137,11 +143,13 @@ type ReadDirReq struct {
 	Path string
 }
 
-// ReadDirRes returns a list of DirEntry entries from the server.
+// ReadDirRes returns a list of DirEntry entries from the server. Error
+// contains the reason on failure.
 type ReadDirRes struct {
 	ID      int64
 	Success bool
 	Entries []DirEntry
+	Error   string
 }
 
 // HashReq asks the server to compute a SHA-256 digest of a remote file for
@@ -152,11 +160,12 @@ type HashReq struct {
 }
 
 // HashRes contains the SHA-256 digest computed by the server. Hash is the
-// 32-byte raw digest (not hex-encoded).
+// 32-byte raw digest (not hex-encoded). Error contains the reason on failure.
 type HashRes struct {
 	ID      int64
 	Success bool
 	Hash    []byte
+	Error   string
 }
 
 // PacketReader is the interface that wraps Peek and Discard,

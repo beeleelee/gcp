@@ -37,7 +37,7 @@ func downloadFile(
 		if statErr == nil {
 			statRes = res.msg.(*asyncio.StatRes)
 			if !statRes.Success {
-				statErr = fmt.Errorf("server returned success=false for stat")
+				statErr = fmt.Errorf("stat failed: %s", statRes.Error)
 			} else if statRes.IsDir {
 				statErr = fmt.Errorf("path is a directory")
 			} else {
@@ -98,7 +98,7 @@ func downloadFile(
 				if readErr == nil {
 					readRes := res.msg.(*asyncio.ReadRes)
 					if !readRes.Success {
-						readErr = fmt.Errorf("server returned success=false for offset %d", offset)
+						readErr = fmt.Errorf("read failed at offset %d: %s", offset, readRes.Error)
 					} else if useChecksum && readRes.Checksum != 0 && crc32.ChecksumIEEE(res.payload) != readRes.Checksum {
 						readErr = fmt.Errorf("checksum mismatch for offset %d", offset)
 					} else {

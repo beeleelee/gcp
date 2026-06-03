@@ -260,7 +260,7 @@ func verifyFileHash(ctx context.Context, cc *copierClient, remotePath, localPath
 	}
 	hashRes := res.msg.(*asyncio.HashRes)
 	if !hashRes.Success {
-		return fmt.Errorf("server returned success=false for hash request")
+		return fmt.Errorf("hash failed: %s", hashRes.Error)
 	}
 
 	fd, err := os.Open(localPath)

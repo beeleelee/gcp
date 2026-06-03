@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"hash/crc32"
 	"io"
 	"os"
@@ -130,7 +131,7 @@ func (c *copierServer) create(conn gnet.Conn, req *asyncio.CreateReq) {
 	if req.IsDir {
 		if err := os.MkdirAll(req.Path, os.FileMode(req.Mode)); err != nil {
 			logger.Log.Debug("failed to create directory", "err", err)
-			c.createFailed(conn, req)
+			c.createFailed(conn, req, err)
 			return
 		}
 		c.createSuccess(conn, req)
@@ -140,33 +141,33 @@ func (c *copierServer) create(conn gnet.Conn, req *asyncio.CreateReq) {
 	// ensure parent directory exists
 	if err := os.MkdirAll(filepath.Dir(req.Path), 0755); err != nil {
 		logger.Log.Debug("failed to create parent directory", "err", err)
-		c.createFailed(conn, req)
+		c.createFailed(conn, req, err)
 		return
 	}
 
 	info, err := os.Stat(req.Path)
 	if err == nil && info.IsDir() {
 		logger.Log.Debug("create failed as target is dir", "createReq", req)
-		c.createFailed(conn, req)
+		c.createFailed(conn, req, fmt.Errorf("path is a directory"))
 		return
 	}
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		logger.Log.Debug("failed to get file info", "err", err)
-		c.createFailed(conn, req)
+		c.createFailed(conn, req, err)
 		return
 	}
 
 	if err != nil && errors.Is(err, os.ErrNotExist) {
 		if fd, err := os.OpenFile(req.Path, os.O_CREATE|os.O_RDWR, os.FileMode(req.Mode)); err != nil {
 			logger.Log.Debug("failed to open file", "err", err)
-			c.createFailed(conn, req)
+			c.createFailed(conn, req, err)
 			return
 		} else {
 			if req.Size > 0 {
 				if err := fd.Truncate(req.Size); err != nil {
 					fd.Close()
 					logger.Log.Debug("failed to truncate file", "err", err)
-					c.createFailed(conn, req)
+					c.createFailed(conn, req, err)
 					return
 				}
 			}
@@ -176,10 +177,15 @@ func (c *copierServer) create(conn gnet.Conn, req *asyncio.CreateReq) {
 	c.createSuccess(conn, req)
 }
 
-func (c *copierServer) createFailed(conn gnet.Conn, req *asyncio.CreateReq) {
+func (c *copierServer) createFailed(conn gnet.Conn, req *asyncio.CreateReq, err error) {
+	errMsg := ""
+	if err != nil {
+		errMsg = err.Error()
+	}
 	if err := asyncio.WriteMessage(conn, &asyncio.CreateRes{
 		ID:      req.ID,
 		Success: false,
+		Error:   errMsg,
 	}, nil); err != nil {
 		logger.Log.Debug("failed to write message", "err", err)
 	}
@@ -200,31 +206,36 @@ func (c *copierServer) createSuccess(conn gnet.Conn, req *asyncio.CreateReq) {
 func (c *copierServer) write(conn gnet.Conn, req *asyncio.WriteReq, payload []byte) {
 	if req.Checksum != 0 && crc32.ChecksumIEEE(payload) != req.Checksum {
 		logger.Log.Debug("checksum mismatch, rejecting write", "path", req.Path, "offset", req.Offset)
-		c.writeFailed(conn, req)
+		c.writeFailed(conn, req, fmt.Errorf("checksum mismatch"))
 		return
 	}
 	tpath := req.Path
 	fd, err := os.OpenFile(tpath, os.O_RDWR, 0644)
 	if err != nil {
 		logger.Log.Debug("failed to open file", "err", err)
-		c.writeFailed(conn, req)
+		c.writeFailed(conn, req, err)
 		return
 	}
 	defer fd.Close()
 	n, err := fd.WriteAt(payload, req.Offset)
 	if err != nil {
 		logger.Log.Debug("failed to write data to file", "err", err)
-		c.writeFailed(conn, req)
+		c.writeFailed(conn, req, err)
 		return
 	}
 	c.writeSuccess(conn, req, n)
 	return
 }
 
-func (c *copierServer) writeFailed(conn gnet.Conn, req *asyncio.WriteReq) {
+func (c *copierServer) writeFailed(conn gnet.Conn, req *asyncio.WriteReq, err error) {
+	errMsg := ""
+	if err != nil {
+		errMsg = err.Error()
+	}
 	if err := asyncio.WriteMessage(conn, &asyncio.WriteRes{
 		ID:      req.ID,
 		Success: false,
+		Error:   errMsg,
 	}, nil); err != nil {
 		logger.Log.Debug("failed to write message", "err", err)
 	}
@@ -234,7 +245,7 @@ func (c *copierServer) read(conn gnet.Conn, req *asyncio.ReadReq) {
 	fd, err := os.Open(req.Path)
 	if err != nil {
 		logger.Log.Debug("failed to open file for read", "err", err)
-		c.readFailed(conn, req)
+		c.readFailed(conn, req, err)
 		return
 	}
 	defer fd.Close()
@@ -242,7 +253,7 @@ func (c *copierServer) read(conn gnet.Conn, req *asyncio.ReadReq) {
 	info, err := fd.Stat()
 	if err != nil {
 		logger.Log.Debug("failed to stat file for read", "err", err)
-		c.readFailed(conn, req)
+		c.readFailed(conn, req, err)
 		return
 	}
 
@@ -250,17 +261,22 @@ func (c *copierServer) read(conn gnet.Conn, req *asyncio.ReadReq) {
 	n, err := fd.ReadAt(buf, req.Offset)
 	if err != nil && n == 0 {
 		logger.Log.Debug("failed to read file", "err", err)
-		c.readFailed(conn, req)
+		c.readFailed(conn, req, err)
 		return
 	}
 
 	c.readSuccess(conn, req, buf[:n], info.Size())
 }
 
-func (c *copierServer) readFailed(conn gnet.Conn, req *asyncio.ReadReq) {
+func (c *copierServer) readFailed(conn gnet.Conn, req *asyncio.ReadReq, err error) {
+	errMsg := ""
+	if err != nil {
+		errMsg = err.Error()
+	}
 	if err := asyncio.WriteMessage(conn, &asyncio.ReadRes{
 		ID:      req.ID,
 		Success: false,
+		Error:   errMsg,
 	}, nil); err != nil {
 		logger.Log.Debug("failed to write message", "err", err)
 	}
@@ -283,16 +299,21 @@ func (c *copierServer) readDir(conn gnet.Conn, req *asyncio.ReadDirReq) {
 	entries, err := os.ReadDir(req.Path)
 	if err != nil {
 		logger.Log.Debug("readdir failed", "path", req.Path, "err", err)
-		c.readDirFailed(conn, req)
+		c.readDirFailed(conn, req, err)
 		return
 	}
 	c.readDirSuccess(conn, req, entries)
 }
 
-func (c *copierServer) readDirFailed(conn gnet.Conn, req *asyncio.ReadDirReq) {
+func (c *copierServer) readDirFailed(conn gnet.Conn, req *asyncio.ReadDirReq, err error) {
+	errMsg := ""
+	if err != nil {
+		errMsg = err.Error()
+	}
 	if err := asyncio.WriteMessage(conn, &asyncio.ReadDirRes{
 		ID:      req.ID,
 		Success: false,
+		Error:   errMsg,
 	}, nil); err != nil {
 		logger.Log.Debug("failed to write message", "err", err)
 	}
@@ -330,16 +351,21 @@ func (c *copierServer) stat(conn gnet.Conn, req *asyncio.StatReq) {
 	info, err := os.Stat(req.Path)
 	if err != nil {
 		logger.Log.Debug("stat failed", "path", req.Path, "err", err)
-		c.statFailed(conn, req)
+		c.statFailed(conn, req, err)
 		return
 	}
 	c.statSuccess(conn, req, info)
 }
 
-func (c *copierServer) statFailed(conn gnet.Conn, req *asyncio.StatReq) {
+func (c *copierServer) statFailed(conn gnet.Conn, req *asyncio.StatReq, err error) {
+	errMsg := ""
+	if err != nil {
+		errMsg = err.Error()
+	}
 	if err := asyncio.WriteMessage(conn, &asyncio.StatRes{
 		ID:      req.ID,
 		Success: false,
+		Error:   errMsg,
 	}, nil); err != nil {
 		logger.Log.Debug("failed to write message", "err", err)
 	}
@@ -374,7 +400,7 @@ func (c *copierServer) hash(conn gnet.Conn, req *asyncio.HashReq) {
 	fd, err := os.Open(req.Path)
 	if err != nil {
 		logger.Log.Debug("hash: failed to open file", "path", req.Path, "err", err)
-		c.hashFailed(conn, req)
+		c.hashFailed(conn, req, err)
 		return
 	}
 	defer fd.Close()
@@ -382,7 +408,7 @@ func (c *copierServer) hash(conn gnet.Conn, req *asyncio.HashReq) {
 	h := sha256.New()
 	if _, err := io.Copy(h, fd); err != nil {
 		logger.Log.Debug("hash: failed to read file", "err", err)
-		c.hashFailed(conn, req)
+		c.hashFailed(conn, req, err)
 		return
 	}
 
@@ -395,10 +421,15 @@ func (c *copierServer) hash(conn gnet.Conn, req *asyncio.HashReq) {
 	}
 }
 
-func (c *copierServer) hashFailed(conn gnet.Conn, req *asyncio.HashReq) {
+func (c *copierServer) hashFailed(conn gnet.Conn, req *asyncio.HashReq, err error) {
+	errMsg := ""
+	if err != nil {
+		errMsg = err.Error()
+	}
 	if err := asyncio.WriteMessage(conn, &asyncio.HashRes{
 		ID:      req.ID,
 		Success: false,
+		Error:   errMsg,
 	}, nil); err != nil {
 		logger.Log.Debug("hash: failed to write message", "err", err)
 	}

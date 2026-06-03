@@ -77,7 +77,7 @@ func isRemoteDir(ctx context.Context, hostAddr, path string, timeout time.Durati
 	}
 	statRes := res.msg.(*asyncio.StatRes)
 	if !statRes.Success {
-		return false, fmt.Errorf("stat failed for %s", path)
+		return false, fmt.Errorf("stat failed for %s: %s", path, statRes.Error)
 	}
 	return statRes.IsDir, nil
 }
