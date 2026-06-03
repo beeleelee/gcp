@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kevinburke/ssh_config"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 )
@@ -24,6 +25,58 @@ const sessionTTL = 5 * time.Minute
 
 // challengeLen is the byte length of a random challenge sent to the client.
 const challengeLen = 32
+
+// sshConfigEntry holds resolved SSH config fields for a host alias.
+type sshConfigEntry struct {
+	Host         string // alias from the address (e.g. "myserver")
+	HostName     string // resolved dial target (e.g. "192.168.1.100")
+	Port         string // from SSH config, or empty
+	User         string // from SSH config, or empty
+	IdentityFile string // from SSH config, or empty
+}
+
+// sshConfigLookup looks up host in ~/.ssh/config and returns any matching
+// Host entry. Returns nil if the file is missing or unreadable.
+func sshConfigLookup(host string) *sshConfigEntry {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	f, err := os.Open(filepath.Join(home, ".ssh", "config"))
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	cfg, err := ssh_config.Decode(f)
+	if err != nil {
+		return nil
+	}
+
+	entry := &sshConfigEntry{Host: host}
+
+	if v, err := cfg.Get(host, "HostName"); err == nil && v != "" {
+		entry.HostName = v
+	}
+	if v, err := cfg.Get(host, "Port"); err == nil && v != "" {
+		entry.Port = v
+	}
+	if v, err := cfg.Get(host, "User"); err == nil && v != "" {
+		entry.User = v
+	}
+	if v, err := cfg.Get(host, "IdentityFile"); err == nil && v != "" {
+		// Expand ~ and relative paths relative to ~/.ssh
+		expanded := os.ExpandEnv(v)
+		if strings.HasPrefix(expanded, "~/") {
+			expanded = filepath.Join(home, expanded[2:])
+		} else if !filepath.IsAbs(expanded) {
+			expanded = filepath.Join(home, ".ssh", expanded)
+		}
+		entry.IdentityFile = expanded
+	}
+
+	return entry
+}
 
 // sessionInfo holds the authenticated user identity, stored in the session
 // store and in the gnet connection context after successful auth.
@@ -85,9 +138,13 @@ func generateChallenge() ([]byte, error) {
 	return b, nil
 }
 
-// clientSigner attempts to find an SSH signer for the client, trying the
-// SSH agent first, then falling back to common private key paths.
-func clientSigner() (ssh.Signer, ssh.PublicKey, error) {
+// clientSigner attempts to find an SSH signer for the client. If identityFile
+// is non-empty, only that specific key file is tried. Otherwise it tries the
+// SSH agent first, then falls back to common private key paths.
+func clientSigner(identityFile string) (ssh.Signer, ssh.PublicKey, error) {
+	if identityFile != "" {
+		return privateKeyFileSigner(identityFile)
+	}
 	signer, pub, err := sshAgentSigner()
 	if err == nil {
 		return signer, pub, nil
@@ -143,6 +200,20 @@ func privateKeySigner() (ssh.Signer, ssh.PublicKey, error) {
 	return nil, nil, fmt.Errorf("no private key found in %s/.ssh", home)
 }
 
+// privateKeyFileSigner reads and parses a single SSH private key file.
+// Passphrase-protected keys are skipped.
+func privateKeyFileSigner(path string) (ssh.Signer, ssh.PublicKey, error) {
+	keyBytes, err := os.ReadFile(path)
+	if err != nil {
+		return nil, nil, fmt.Errorf("read identity file %q: %w", path, err)
+	}
+	signer, err := ssh.ParsePrivateKey(keyBytes)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse identity file %q: %w", path, err)
+	}
+	return signer, signer.PublicKey(), nil
+}
+
 // verifySSHSignature parses the public key, unmarshals the SSH signature,
 // and verifies it against challenge. On success it returns the parsed
 // PublicKey for further matching against authorized keys.
@@ -161,10 +232,41 @@ func verifySSHSignature(pubKeyBytes, challenge, sigBytes []byte) (ssh.PublicKey,
 	return pubKey, nil
 }
 
-// findUserByPubKey scans system users by reading /etc/passwd and checks
-// each user's ~/.ssh/authorized_keys for a matching public key. Returns
-// the username and home directory on the first match.
-func findUserByPubKey(targetKey ssh.PublicKey) (string, string, error) {
+// findUserByPubKey finds the OS user whose ~/.ssh/authorized_keys contains
+// the given targetKey. If hintUser is non-empty, only that user is checked
+// (skipping the full /etc/passwd scan). Returns the username and home
+// directory on match.
+func findUserByPubKey(targetKey ssh.PublicKey, hintUser string) (string, string, error) {
+	targetBytes := targetKey.Marshal()
+
+	if hintUser != "" {
+		home, err := lookupHome(hintUser)
+		if err != nil {
+			return "", "", fmt.Errorf("hint user %q not found: %w", hintUser, err)
+		}
+		akPath := filepath.Join(home, ".ssh", "authorized_keys")
+		ak, err := os.Open(akPath)
+		if err != nil {
+			return "", "", fmt.Errorf("no authorized_keys for user %q", hintUser)
+		}
+		defer ak.Close()
+		akSc := bufio.NewScanner(ak)
+		for akSc.Scan() {
+			line := strings.TrimSpace(akSc.Text())
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			pubKey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(line))
+			if err != nil {
+				continue
+			}
+			if bytes.Equal(pubKey.Marshal(), targetBytes) {
+				return hintUser, home, nil
+			}
+		}
+		return "", "", fmt.Errorf("no matching key in %s's authorized_keys", hintUser)
+	}
+
 	type passwdEntry struct {
 		Name string
 		Home string
@@ -185,8 +287,6 @@ func findUserByPubKey(targetKey ssh.PublicKey) (string, string, error) {
 		}
 		entries = append(entries, passwdEntry{Name: parts[0], Home: parts[5]})
 	}
-
-	targetBytes := targetKey.Marshal()
 
 	for _, e := range entries {
 		akPath := filepath.Join(e.Home, ".ssh", "authorized_keys")

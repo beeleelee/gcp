@@ -234,7 +234,7 @@ func (c *copierServer) handleAuth(conn gnet.Conn, req *asyncio.AuthReq) {
 			return
 		}
 
-		user, home, err := findUserByPubKey(pubKey)
+		user, home, err := findUserByPubKey(pubKey, req.User)
 		if err != nil {
 			asyncio.WriteMessage(conn, &asyncio.AuthRes{
 				ID:      req.ID,

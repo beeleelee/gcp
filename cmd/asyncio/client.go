@@ -113,7 +113,7 @@ func (cc *copierClient) processMsg() {
 // connection to obtain a session token, then spawns batch connection goroutines
 // that re-auth with just the token.
 func (cc *copierClient) dialAndAuth() error {
-	signer, pubKey, err := clientSigner()
+	signer, pubKey, err := clientSigner("")
 	if err != nil {
 		return fmt.Errorf("auth: %w", err)
 	}
