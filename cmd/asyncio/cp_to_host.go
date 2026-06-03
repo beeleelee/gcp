@@ -10,16 +10,14 @@ import (
 	"github.com/beeleelee/gcp/logger"
 )
 
-// cpOneFileToHost opens a local file and uploads it to the remote host in
-// its entirety — stat, connect, then delegate to uploadFile.
+// cpOneFileToHost opens a local file and uploads it to the remote host using
+// the already-connected shared client cc.
 func cpOneFileToHost(
 	ctx context.Context,
-	hostAddr, src, target string,
+	cc *copierClient,
+	src, target string,
 	chunkSize int64,
-	batch int,
-	timeout time.Duration,
 	maxRetries int,
-	useChecksum bool,
 	useSha256 bool,
 	compressionAlgo uint8,
 ) (err error) {
@@ -27,13 +25,7 @@ func cpOneFileToHost(
 	if err != nil {
 		return
 	}
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	cc, err := newClient(ctx, hostAddr, batch, timeout, useChecksum)
-	if err != nil {
-		return
-	}
-	return uploadFile(ctx, cc, src, target, sfinfo, chunkSize, batch, maxRetries, useSha256, compressionAlgo)
+	return uploadFile(ctx, cc, src, target, sfinfo, chunkSize, cc.batch, maxRetries, useSha256, compressionAlgo)
 }
 
 // uploadFile orchestrates a single file upload to the remote host. It

@@ -156,25 +156,16 @@ func downloadFile(
 	return nil
 }
 
-// cpOneFileFromHost opens a connection and downloads a single file from
-// the remote host to a local path.
+// cpOneFileFromHost downloads a single file from the remote host to a local
+// path using the already-connected shared client cc.
 func cpOneFileFromHost(
 	ctx context.Context,
-	hostAddr, src, target string,
+	cc *copierClient,
+	src, target string,
 	chunkSize int64,
-	batch int,
-	timeout time.Duration,
 	maxRetries int,
-	useChecksum bool,
 	useSha256 bool,
 	compressionAlgo uint8,
 ) (err error) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	cc, err := newClient(ctx, hostAddr, batch, timeout, useChecksum)
-	if err != nil {
-		return
-	}
-
-	return downloadFile(ctx, cc, src, target, chunkSize, batch, maxRetries, useChecksum, useSha256, compressionAlgo)
+	return downloadFile(ctx, cc, src, target, chunkSize, cc.batch, maxRetries, cc.useChecksum, useSha256, compressionAlgo)
 }

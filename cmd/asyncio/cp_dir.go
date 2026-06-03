@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/beeleelee/gcp/logger"
 )
@@ -15,21 +14,13 @@ import (
 // uploadFile.
 func cpDirToHost(
 	ctx context.Context,
-	hostAddr, srcDir, target string,
+	cc *copierClient,
+	srcDir, target string,
 	chunkSize int64,
-	batch int,
-	timeout time.Duration,
 	maxRetries int,
-	useChecksum bool,
 	useSha256 bool,
 	compressionAlgo uint8,
 ) error {
-	cc, err := newClient(ctx, hostAddr, batch, timeout, useChecksum)
-	if err != nil {
-		return err
-	}
-	defer cc.Close()
-
 	return filepath.Walk(srcDir, func(path string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -51,6 +42,6 @@ func cpDirToHost(
 		}
 
 		logger.Log.Debug("uploading file", "src", path, "dst", remotePath)
-		return uploadFile(ctx, cc, path, remotePath, info, chunkSize, batch, maxRetries, useSha256, compressionAlgo)
+		return uploadFile(ctx, cc, path, remotePath, info, chunkSize, cc.batch, maxRetries, useSha256, compressionAlgo)
 	})
 }

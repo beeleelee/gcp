@@ -64,13 +64,8 @@ func lookupHosts(hostname string) (string, error) {
 }
 
 // isRemoteDir checks whether a remote path is a directory by issuing a
-// Stat RPC. It creates a temporary client connection for the query.
-func isRemoteDir(ctx context.Context, hostAddr, path string, timeout time.Duration, useChecksum bool) (bool, error) {
-	cc, err := newClient(ctx, hostAddr, 1, timeout, useChecksum)
-	if err != nil {
-		return false, err
-	}
-	defer cc.Close()
+// Stat RPC on the provided client.
+func isRemoteDir(ctx context.Context, cc *copierClient, path string) (bool, error) {
 	res, err := cc.Stat(path)
 	if err != nil {
 		return false, err
@@ -156,15 +151,13 @@ func parseRemoteAddr(s string) (hostPort, path string, err error) {
 
 // copySingle is the 4-way router that decides whether to upload, download,
 // or recurse into a directory based on whether src and dst are local or
-// remote filesystem paths.
+// remote filesystem paths. The shared client cc is used for all RPCs.
 func copySingle(
 	ctx context.Context,
 	src, dst string,
+	cc *copierClient,
 	chunkSize int64,
-	batch int,
-	timeout time.Duration,
 	maxRetries int,
-	useChecksum bool,
 	recursive bool,
 	useSha256 bool,
 	compressionAlgo uint8,
@@ -180,7 +173,7 @@ func copySingle(
 			if !dstRemote {
 				return errors.New("downloading directories is not yet supported")
 			}
-			hostPort, remotePath, err := parseRemoteAddr(dst)
+			_, remotePath, err := parseRemoteAddr(dst)
 			if err != nil {
 				return err
 			}
@@ -188,14 +181,14 @@ func copySingle(
 			if target == "" || strings.HasSuffix(target, "/") {
 				target = target + filepath.Base(src)
 			}
-			logger.Log.Debug("copying directory", "host", hostPort, "src", src, "dst", target)
-			return cpDirToHost(ctx, hostPort, src, target, chunkSize, batch, timeout, maxRetries, useChecksum, useSha256, compressionAlgo)
+			logger.Log.Debug("copying directory", "src", src, "dst", target)
+			return cpDirToHost(ctx, cc, src, target, chunkSize, maxRetries, useSha256, compressionAlgo)
 		}
 	}
 
 	switch {
 	case srcRemote && !dstRemote:
-		hostPort, remotePath, err := parseRemoteAddr(src)
+		_, remotePath, err := parseRemoteAddr(src)
 		if err != nil {
 			return err
 		}
@@ -204,21 +197,21 @@ func copySingle(
 			target = target + filepath.Base(remotePath)
 		}
 
-		isDir, dirErr := isRemoteDir(ctx, hostPort, remotePath, timeout, useChecksum)
+		isDir, dirErr := isRemoteDir(ctx, cc, remotePath)
 		if dirErr == nil && isDir {
 			if !recursive {
 				return fmt.Errorf("source is a directory; use -r to copy directories")
 			}
-			return cpDirFromHost(ctx, hostPort, remotePath, target,
-				chunkSize, batch, timeout, maxRetries, useChecksum, useSha256, compressionAlgo)
+			return cpDirFromHost(ctx, cc, remotePath, target,
+				chunkSize, maxRetries, useSha256, compressionAlgo)
 		}
 
-		logger.Log.Debug("downloading file", "host", hostPort, "remote", remotePath, "local", target)
-		return cpOneFileFromHost(ctx, hostPort, remotePath, target,
-			chunkSize, batch, timeout, maxRetries, useChecksum, useSha256, compressionAlgo)
+		logger.Log.Debug("downloading file", "remote", remotePath, "local", target)
+		return cpOneFileFromHost(ctx, cc, remotePath, target,
+			chunkSize, maxRetries, useSha256, compressionAlgo)
 
 	case !srcRemote && dstRemote:
-		hostPort, remotePath, err := parseRemoteAddr(dst)
+		_, remotePath, err := parseRemoteAddr(dst)
 		if err != nil {
 			return err
 		}
@@ -226,9 +219,9 @@ func copySingle(
 		if target == "" || strings.HasSuffix(target, "/") {
 			target = target + filepath.Base(src)
 		}
-		logger.Log.Debug("uploading file", "host", hostPort, "src", src, "dst", target)
-		return cpOneFileToHost(ctx, hostPort, src, target,
-			chunkSize, batch, timeout, maxRetries, useChecksum, useSha256, compressionAlgo)
+		logger.Log.Debug("uploading file", "src", src, "dst", target)
+		return cpOneFileToHost(ctx, cc, src, target,
+			chunkSize, maxRetries, useSha256, compressionAlgo)
 
 	default:
 		return errors.New("one path must be local, the other remote")
@@ -346,6 +339,25 @@ var cpCmd = &cli.Command{
 			return nil
 		}
 
+		// Create a shared client for all file transfers.
+		hostPort := ""
+		if srcRemote {
+			hostPort, _, _ = parseRemoteAddr(sources[0])
+		} else {
+			hostPort, _, _ = parseRemoteAddr(dst)
+		}
+		cc, err := newClient(ctx, hostPort, c.Int("batch"), c.Duration("timeout"), c.Bool("checksum"))
+		if err != nil {
+			return fmt.Errorf("connect to %s: %w", hostPort, err)
+		}
+		defer cc.Close()
+
+		compressionAlgo := parseCompressionFlag(c.String("compression"))
+		chunkSize := c.Int64("chunk")
+		maxRetries := c.Int("retry")
+		useSha256 := c.Bool("sha256")
+		recursive := c.Bool("recursive")
+
 		for _, src := range expanded {
 			target := dst
 			if multiple {
@@ -356,10 +368,8 @@ var cpCmd = &cli.Command{
 					target = filepath.Join(dst, filepath.Base(src))
 				}
 			}
-			compressionAlgo := parseCompressionFlag(c.String("compression"))
-		if err := copySingle(ctx, src, target,
-				c.Int64("chunk"), c.Int("batch"), c.Duration("timeout"),
-				c.Int("retry"), c.Bool("checksum"), c.Bool("recursive"), c.Bool("sha256"), compressionAlgo); err != nil {
+			if err := copySingle(ctx, src, target, cc,
+				chunkSize, maxRetries, recursive, useSha256, compressionAlgo); err != nil {
 				return err
 			}
 		}
