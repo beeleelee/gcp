@@ -40,8 +40,8 @@ Asyncio (default):
 # download from host
 ./bin/gcp cp --chunk 32768 --batch 4 host:1717/remote/path ./local_dst
 
-# with reliability options
-./bin/gcp cp --timeout 15s --retry 3 --checksum true ./src.txt host:1717/dst
+# with reliability options and compression
+./bin/gcp cp --timeout 15s --retry 3 --checksum true --compression gzip ./src.txt host:1717/dst
 
 # copy directory recursively
 ./bin/gcp cp -r ./mydir host:1717/dst
@@ -66,15 +66,16 @@ Log level: `--level` or `-L` flag (`error` default, accepts `info`, `debug`, etc
 
 ### `cp` flags
 
-| Flag          | Default | Description                            |
-|---------------|---------|----------------------------------------|
-| `--chunk`     | 32768   | chunk size in bytes                    |
-| `--batch`     | 4       | max concurrent chunk transfers         |
-| `--timeout`   | 15s     | read/write timeout (0 to disable)      |
-| `--retry`     | 3       | max chunk transfer retries             |
-| `--checksum`  | true    | enable CRC-32 chunk integrity checks   |
-| `--recursive, -r` | false | copy directories recursively           |
-| `--dry-run`       | false | show transfer plan without doing it     |
+| Flag               | Default | Description                                 |
+|--------------------|---------|---------------------------------------------|
+| `--chunk`          | 32768   | chunk size in bytes                         |
+| `--batch`          | 4       | max concurrent chunk transfers              |
+| `--timeout`        | 15s     | read/write timeout (0 to disable)           |
+| `--retry`          | 3       | max chunk transfer retries                  |
+| `--checksum`       | true    | enable CRC-32 chunk integrity checks        |
+| `--recursive, -r`  | false   | copy directories recursively                |
+| `--dry-run`        | false   | show transfer plan without doing it         |
+| `--compression`    | ""      | gzip chunk payloads (`gzip` or empty)       |
 
 ## Architecture notes
 

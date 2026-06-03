@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -286,4 +288,50 @@ func verifyFileHash(ctx context.Context, cc *copierClient, remotePath, localPath
 
 	logger.Log.Debug("hash verification passed")
 	return nil
+}
+
+// compressChunk compresses data using the algorithm indicated by algo
+// (CompressionGzip, etc.). If the compressed result is not smaller than
+// the original, the original is returned as-is (auto-skip).
+func compressChunk(data []byte, algo uint8) ([]byte, uint8, error) {
+	if algo == asyncio.CompressionNone || len(data) == 0 {
+		return data, asyncio.CompressionNone, nil
+	}
+	switch algo {
+	case asyncio.CompressionGzip:
+		var buf bytes.Buffer
+		zw, _ := gzip.NewWriterLevel(&buf, gzip.DefaultCompression)
+		if _, err := zw.Write(data); err != nil {
+			return nil, asyncio.CompressionNone, err
+		}
+		if err := zw.Close(); err != nil {
+			return nil, asyncio.CompressionNone, err
+		}
+		compressed := buf.Bytes()
+		if len(compressed) >= len(data) {
+			return data, asyncio.CompressionNone, nil
+		}
+		return compressed, algo, nil
+	default:
+		return data, asyncio.CompressionNone, nil
+	}
+}
+
+// decompressChunk decompresses data using the algorithm indicated by algo.
+// If algo is CompressionNone the data is returned verbatim.
+func decompressChunk(data []byte, algo uint8) ([]byte, error) {
+	if algo == asyncio.CompressionNone || len(data) == 0 {
+		return data, nil
+	}
+	switch algo {
+	case asyncio.CompressionGzip:
+		zr, err := gzip.NewReader(bytes.NewReader(data))
+		if err != nil {
+			return nil, err
+		}
+		defer zr.Close()
+		return io.ReadAll(zr)
+	default:
+		return data, nil
+	}
 }

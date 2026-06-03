@@ -23,6 +23,7 @@ func cpDirFromHost(
 	maxRetries int,
 	useChecksum bool,
 	useSha256 bool,
+	compressionAlgo uint8,
 ) error {
 	cc, err := newClient(ctx, hostAddr, batch, timeout, useChecksum)
 	if err != nil {
@@ -31,7 +32,7 @@ func cpDirFromHost(
 	defer cc.Close()
 
 	return walkRemoteDir(ctx, cc, srcDir, target,
-		chunkSize, batch, maxRetries, useChecksum, useSha256)
+		chunkSize, batch, maxRetries, useChecksum, useSha256, compressionAlgo)
 }
 
 // walkRemoteDir recursively reads a remote directory listing and downloads
@@ -47,6 +48,7 @@ func walkRemoteDir(
 	maxRetries int,
 	useChecksum bool,
 	useSha256 bool,
+	compressionAlgo uint8,
 ) error {
 	if err := os.MkdirAll(target, 0755); err != nil {
 		return err
@@ -78,13 +80,13 @@ func walkRemoteDir(
 
 		if entry.IsDir {
 			if err := walkRemoteDir(ctx, cc, remotePath, localPath,
-				chunkSize, batch, maxRetries, useChecksum, useSha256); err != nil {
+				chunkSize, batch, maxRetries, useChecksum, useSha256, compressionAlgo); err != nil {
 				return err
 			}
 		} else {
 			logger.Log.Debug("downloading file", "src", remotePath, "dst", localPath)
 			if err := downloadFile(ctx, cc, remotePath, localPath,
-				chunkSize, batch, maxRetries, useChecksum, useSha256); err != nil {
+				chunkSize, batch, maxRetries, useChecksum, useSha256, compressionAlgo); err != nil {
 				return err
 			}
 			if entry.Mode != 0 {

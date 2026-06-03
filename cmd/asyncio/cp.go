@@ -82,6 +82,17 @@ func isRemoteDir(ctx context.Context, hostAddr, path string, timeout time.Durati
 	return statRes.IsDir, nil
 }
 
+// parseCompressionFlag converts a compression flag string to the asyncio
+// constant. The empty string or "none" maps to CompressionNone.
+func parseCompressionFlag(s string) uint8 {
+	switch s {
+	case "gzip":
+		return asyncio.CompressionGzip
+	default:
+		return asyncio.CompressionNone
+	}
+}
+
 // parseRemoteAddr splits a "host:port/path" remote address into its
 // components. The port defaults to 1717 if omitted. Host resolution is
 // done via /etc/hosts (not DNS). IPv6 is explicitly unsupported.
@@ -156,6 +167,7 @@ func copySingle(
 	useChecksum bool,
 	recursive bool,
 	useSha256 bool,
+	compressionAlgo uint8,
 ) error {
 	srcRemote := isRemoteAddr(src)
 	dstRemote := isRemoteAddr(dst)
@@ -177,7 +189,7 @@ func copySingle(
 				target = target + filepath.Base(src)
 			}
 			logger.Log.Debug("copying directory", "host", hostPort, "src", src, "dst", target)
-			return cpDirToHost(ctx, hostPort, src, target, chunkSize, batch, timeout, maxRetries, useChecksum, useSha256)
+			return cpDirToHost(ctx, hostPort, src, target, chunkSize, batch, timeout, maxRetries, useChecksum, useSha256, compressionAlgo)
 		}
 	}
 
@@ -198,12 +210,12 @@ func copySingle(
 				return fmt.Errorf("source is a directory; use -r to copy directories")
 			}
 			return cpDirFromHost(ctx, hostPort, remotePath, target,
-				chunkSize, batch, timeout, maxRetries, useChecksum, useSha256)
+				chunkSize, batch, timeout, maxRetries, useChecksum, useSha256, compressionAlgo)
 		}
 
 		logger.Log.Debug("downloading file", "host", hostPort, "remote", remotePath, "local", target)
 		return cpOneFileFromHost(ctx, hostPort, remotePath, target,
-			chunkSize, batch, timeout, maxRetries, useChecksum, useSha256)
+			chunkSize, batch, timeout, maxRetries, useChecksum, useSha256, compressionAlgo)
 
 	case !srcRemote && dstRemote:
 		hostPort, remotePath, err := parseRemoteAddr(dst)
@@ -216,7 +228,7 @@ func copySingle(
 		}
 		logger.Log.Debug("uploading file", "host", hostPort, "src", src, "dst", target)
 		return cpOneFileToHost(ctx, hostPort, src, target,
-			chunkSize, batch, timeout, maxRetries, useChecksum, useSha256)
+			chunkSize, batch, timeout, maxRetries, useChecksum, useSha256, compressionAlgo)
 
 	default:
 		return errors.New("one path must be local, the other remote")
@@ -265,6 +277,11 @@ var cpCmd = &cli.Command{
 			Name:  "sha256",
 			Value: true,
 			Usage: "verify file integrity with SHA-256 after transfer",
+		},
+		&cli.StringFlag{
+			Name:  "compression",
+			Value: "",
+			Usage: "compress chunk payloads (`gzip` or empty for none)",
 		},
 	},
 	Action: func(c *cli.Context) (err error) {
@@ -339,9 +356,10 @@ var cpCmd = &cli.Command{
 					target = filepath.Join(dst, filepath.Base(src))
 				}
 			}
-			if err := copySingle(ctx, src, target,
+			compressionAlgo := parseCompressionFlag(c.String("compression"))
+		if err := copySingle(ctx, src, target,
 				c.Int64("chunk"), c.Int("batch"), c.Duration("timeout"),
-				c.Int("retry"), c.Bool("checksum"), c.Bool("recursive"), c.Bool("sha256")); err != nil {
+				c.Int("retry"), c.Bool("checksum"), c.Bool("recursive"), c.Bool("sha256"), compressionAlgo); err != nil {
 				return err
 			}
 		}

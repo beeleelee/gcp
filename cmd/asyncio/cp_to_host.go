@@ -21,6 +21,7 @@ func cpOneFileToHost(
 	maxRetries int,
 	useChecksum bool,
 	useSha256 bool,
+	compressionAlgo uint8,
 ) (err error) {
 	sfinfo, err := os.Stat(src)
 	if err != nil {
@@ -32,7 +33,7 @@ func cpOneFileToHost(
 	if err != nil {
 		return
 	}
-	return uploadFile(ctx, cc, src, target, sfinfo, chunkSize, batch, maxRetries, useSha256)
+	return uploadFile(ctx, cc, src, target, sfinfo, chunkSize, batch, maxRetries, useSha256, compressionAlgo)
 }
 
 // uploadFile orchestrates a single file upload to the remote host. It
@@ -49,6 +50,7 @@ func uploadFile(
 	batch int,
 	maxRetries int,
 	useSha256 bool,
+	compressionAlgo uint8,
 ) error {
 	state := loadResumeState(srcPath, target, info.Size(), chunkSize, batch)
 
@@ -83,7 +85,7 @@ func uploadFile(
 
 	err = processChunks(ctx, info.Size(), chunkSize, 0, batch, state,
 		func(ctx context.Context, offset, size int64, progressChan chan<- int64) error {
-			if err := uploadFileChunk(ctx, cc, sfd, target, offset, size, maxRetries); err != nil {
+			if err := uploadFileChunk(ctx, cc, sfd, target, offset, size, maxRetries, compressionAlgo); err != nil {
 				return err
 			}
 			select {
@@ -113,7 +115,7 @@ func uploadFile(
 // uploadFileChunk reads a chunk from the local file at offset off and
 // sends it to the remote host via cc.Write(). It retries on failure up to
 // maxRetries times with exponential backoff.
-func uploadFileChunk(ctx context.Context, cc *copierClient, sfd *os.File, target string, off, size int64, maxRetries int) error {
+func uploadFileChunk(ctx context.Context, cc *copierClient, sfd *os.File, target string, off, size int64, maxRetries int, compressionAlgo uint8) error {
 	buf := make([]byte, size)
 	if _, err := sfd.ReadAt(buf, off); err != nil {
 		return err
@@ -125,7 +127,7 @@ func uploadFileChunk(ctx context.Context, cc *copierClient, sfd *os.File, target
 			return ctx.Err()
 		default:
 		}
-		res, wErr := cc.Write(target, off, buf)
+		res, wErr := cc.Write(target, off, buf, compressionAlgo)
 		if wErr != nil {
 			writeErr = wErr
 		} else {

@@ -26,6 +26,7 @@ func downloadFile(
 	maxRetries int,
 	useChecksum bool,
 	useSha256 bool,
+	compressionAlgo uint8,
 ) error {
 	var (
 		res     clientWrappedMsg
@@ -94,7 +95,7 @@ func downloadFile(
 					return ctx.Err()
 				default:
 				}
-				res, readErr = cc.Read(src, offset, size)
+				res, readErr = cc.Read(src, offset, size, compressionAlgo)
 				if readErr == nil {
 					readRes := res.msg.(*asyncio.ReadRes)
 					if !readRes.Success {
@@ -118,11 +119,17 @@ func downloadFile(
 				return readErr
 			}
 
-			if _, err := tfd.WriteAt(res.payload, offset); err != nil {
+			readRes := res.msg.(*asyncio.ReadRes)
+			data, err := decompressChunk(res.payload, readRes.Compression)
+			if err != nil {
+				return fmt.Errorf("decompression failed at offset %d: %w", offset, err)
+			}
+
+			if _, err := tfd.WriteAt(data, offset); err != nil {
 				return err
 			}
 			select {
-			case progressChan <- int64(len(res.payload)):
+			case progressChan <- int64(len(data)):
 			case <-ctx.Done():
 			}
 			if err := addCompletedOffset(state, offset); err != nil {
@@ -160,6 +167,7 @@ func cpOneFileFromHost(
 	maxRetries int,
 	useChecksum bool,
 	useSha256 bool,
+	compressionAlgo uint8,
 ) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -168,5 +176,5 @@ func cpOneFileFromHost(
 		return
 	}
 
-	return downloadFile(ctx, cc, src, target, chunkSize, batch, maxRetries, useChecksum, useSha256)
+	return downloadFile(ctx, cc, src, target, chunkSize, batch, maxRetries, useChecksum, useSha256, compressionAlgo)
 }

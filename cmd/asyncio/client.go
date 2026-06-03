@@ -314,20 +314,27 @@ func (cc *copierClient) Create(target string, size int64, mode fs.FileMode) (cli
 	}
 }
 
-func (cc *copierClient) Write(target string, off int64, payload []byte) (clientWrappedMsg, error) {
+func (cc *copierClient) Write(target string, off int64, payload []byte, compressionAlgo uint8) (clientWrappedMsg, error) {
 	ch := make(chan clientWrappedMsg)
-	req := &asyncio.WriteReq{
-		ID:     cc.genMsgID(),
-		Offset: off,
-		Path:   target,
+
+	compressed, algo, err := compressChunk(payload, compressionAlgo)
+	if err != nil {
+		return clientWrappedMsg{}, err
 	}
-	if cc.useChecksum && len(payload) > 0 {
-		req.Checksum = crc32.ChecksumIEEE(payload)
+
+	req := &asyncio.WriteReq{
+		ID:          cc.genMsgID(),
+		Offset:      off,
+		Path:        target,
+		Compression: algo,
+	}
+	if cc.useChecksum && len(compressed) > 0 {
+		req.Checksum = crc32.ChecksumIEEE(compressed)
 	}
 	cc.msgIn <- clientRequestMsg{
 		clientWrappedMsg: clientWrappedMsg{
 			msg:     req,
-			payload: payload,
+			payload: compressed,
 		},
 		resChan: ch,
 	}
@@ -339,15 +346,16 @@ func (cc *copierClient) Write(target string, off int64, payload []byte) (clientW
 	}
 }
 
-func (cc *copierClient) Read(target string, off int64, size int64) (clientWrappedMsg, error) {
+func (cc *copierClient) Read(target string, off int64, size int64, compressionAlgo uint8) (clientWrappedMsg, error) {
 	ch := make(chan clientWrappedMsg)
 	cc.msgIn <- clientRequestMsg{
 		clientWrappedMsg: clientWrappedMsg{
 			msg: &asyncio.ReadReq{
-				ID:     cc.genMsgID(),
-				Offset: off,
-				Size:   size,
-				Path:   target,
+				ID:          cc.genMsgID(),
+				Offset:      off,
+				Size:        size,
+				Path:        target,
+				Compression: compressionAlgo,
 			},
 		},
 		resChan: ch,

@@ -209,6 +209,14 @@ func (c *copierServer) write(conn gnet.Conn, req *asyncio.WriteReq, payload []by
 		c.writeFailed(conn, req, fmt.Errorf("checksum mismatch"))
 		return
 	}
+
+	data, err := decompressChunk(payload, req.Compression)
+	if err != nil {
+		logger.Log.Debug("decompression failed", "path", req.Path, "offset", req.Offset, "err", err)
+		c.writeFailed(conn, req, err)
+		return
+	}
+
 	tpath := req.Path
 	fd, err := os.OpenFile(tpath, os.O_RDWR, 0644)
 	if err != nil {
@@ -217,7 +225,7 @@ func (c *copierServer) write(conn gnet.Conn, req *asyncio.WriteReq, payload []by
 		return
 	}
 	defer fd.Close()
-	n, err := fd.WriteAt(payload, req.Offset)
+	n, err := fd.WriteAt(data, req.Offset)
 	if err != nil {
 		logger.Log.Debug("failed to write data to file", "err", err)
 		c.writeFailed(conn, req, err)
@@ -265,7 +273,15 @@ func (c *copierServer) read(conn gnet.Conn, req *asyncio.ReadReq) {
 		return
 	}
 
-	c.readSuccess(conn, req, buf[:n], info.Size())
+	data := buf[:n]
+	compressed, algo, err := compressChunk(data, req.Compression)
+	if err != nil {
+		logger.Log.Debug("compression failed", "err", err)
+		c.readFailed(conn, req, err)
+		return
+	}
+
+	c.readSuccess(conn, req, compressed, algo, info.Size())
 }
 
 func (c *copierServer) readFailed(conn gnet.Conn, req *asyncio.ReadReq, err error) {
@@ -282,14 +298,15 @@ func (c *copierServer) readFailed(conn gnet.Conn, req *asyncio.ReadReq, err erro
 	}
 }
 
-func (c *copierServer) readSuccess(conn gnet.Conn, req *asyncio.ReadReq, data []byte, fileSize int64) {
+func (c *copierServer) readSuccess(conn gnet.Conn, req *asyncio.ReadReq, data []byte, compressionAlgo uint8, fileSize int64) {
 	checksum := crc32.ChecksumIEEE(data)
 
 	if err := asyncio.WriteMessage(conn, &asyncio.ReadRes{
-		ID:       req.ID,
-		Success:  true,
-		N:        int64(len(data)),
-		Checksum: checksum,
+		ID:          req.ID,
+		Success:     true,
+		N:           int64(len(data)),
+		Checksum:    checksum,
+		Compression: compressionAlgo,
 	}, data); err != nil {
 		logger.Log.Debug("failed to write message", "err", err)
 	}

@@ -22,6 +22,7 @@ func cpDirToHost(
 	maxRetries int,
 	useChecksum bool,
 	useSha256 bool,
+	compressionAlgo uint8,
 ) error {
 	cc, err := newClient(ctx, hostAddr, batch, timeout, useChecksum)
 	if err != nil {
@@ -50,6 +51,6 @@ func cpDirToHost(
 		}
 
 		logger.Log.Debug("uploading file", "src", path, "dst", remotePath)
-		return uploadFile(ctx, cc, path, remotePath, info, chunkSize, batch, maxRetries, useSha256)
+		return uploadFile(ctx, cc, path, remotePath, info, chunkSize, batch, maxRetries, useSha256, compressionAlgo)
 	})
 }
