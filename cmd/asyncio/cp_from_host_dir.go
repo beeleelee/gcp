@@ -52,6 +52,17 @@ func walkRemoteDir(
 		return err
 	}
 
+	statRes, err := cc.Stat(srcDir)
+	if err != nil {
+		return err
+	}
+	sr := statRes.msg.(*asyncio.StatRes)
+	if sr.Success {
+		if err := os.Chmod(target, os.FileMode(sr.Mode).Perm()); err != nil {
+			return err
+		}
+	}
+
 	res, err := cc.ReadDir(srcDir)
 	if err != nil {
 		return err
@@ -75,6 +86,11 @@ func walkRemoteDir(
 			if err := downloadFile(ctx, cc, remotePath, localPath,
 				chunkSize, batch, maxRetries, useChecksum, useSha256); err != nil {
 				return err
+			}
+			if entry.Mode != 0 {
+				if err := os.Chmod(localPath, os.FileMode(entry.Mode).Perm()); err != nil {
+					return err
+				}
 			}
 		}
 	}

@@ -63,7 +63,7 @@ func downloadFile(
 	var tfd *os.File
 	if state == nil {
 		var err error
-		tfd, err = os.OpenFile(target, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
+		tfd, err = os.OpenFile(target, os.O_CREATE|os.O_RDWR|os.O_TRUNC, os.FileMode(statRes.Mode).Perm())
 		if err != nil {
 			return err
 		}
@@ -132,6 +132,10 @@ func downloadFile(
 		},
 	)
 	if err != nil {
+		return err
+	}
+
+	if err := os.Chmod(target, os.FileMode(statRes.Mode).Perm()); err != nil {
 		return err
 	}
 
