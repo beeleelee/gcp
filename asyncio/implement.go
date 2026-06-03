@@ -15,6 +15,8 @@ var _ MSG = (*ReadDirReq)(nil)
 var _ MSG = (*ReadDirRes)(nil)
 var _ MSG = (*HashReq)(nil)
 var _ MSG = (*HashRes)(nil)
+var _ MSG = (*AuthReq)(nil)
+var _ MSG = (*AuthRes)(nil)
 
 func (m *CreateReq) Type() MessageType {
 	return CreateReqT
@@ -218,5 +220,39 @@ func (m *HashRes) Encode() []byte {
 }
 
 func (m *HashRes) Decode(buf []byte) error {
+	return cbor.Unmarshal(buf, m)
+}
+
+func (m *AuthReq) Type() MessageType {
+	return AuthReqT
+}
+
+func (m *AuthReq) GetID() int64 {
+	return m.ID
+}
+
+func (m *AuthReq) Encode() []byte {
+	bs, _ := cbor.Marshal(m)
+	return bs
+}
+
+func (m *AuthReq) Decode(buf []byte) error {
+	return cbor.Unmarshal(buf, m)
+}
+
+func (m *AuthRes) Type() MessageType {
+	return AuthResT
+}
+
+func (m *AuthRes) GetID() int64 {
+	return m.ID
+}
+
+func (m *AuthRes) Encode() []byte {
+	bs, _ := cbor.Marshal(m)
+	return bs
+}
+
+func (m *AuthRes) Decode(buf []byte) error {
 	return cbor.Unmarshal(buf, m)
 }

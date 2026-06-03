@@ -27,6 +27,8 @@ const (
 	ReadDirResT                    // server→client: returns directory listing
 	HashReqT                       // client→server: request SHA-256 of remote file
 	HashResT                       // server→client: returns SHA-256 digest
+	AuthReqT                       // client→server: SSH key authentication request
+	AuthResT                       // server→client: authentication response
 )
 
 // MessageSize and PayloadSize are the byte widths of the two length fields
@@ -181,6 +183,29 @@ type HashRes struct {
 	Error   string
 }
 
+// AuthReq carries SSH authentication data from the client to the server.
+// The first request sends PubKey and optionally a Token for session reuse.
+// The server responds with a challenge, which the client signs and sends
+// back in a second AuthReq with Signature populated.
+type AuthReq struct {
+	ID        int64
+	PubKey    []byte // SSH public key wire format (first message)
+	Signature []byte // signature of the challenge (second message)
+	Token     string // session token for fast re-auth on new connections
+}
+
+// AuthRes is the server's response to an AuthReq. On the initial handshake
+// it carries a Challenge for the client to sign. On success it returns a
+// session Token for subsequent connections and the authenticated User name.
+type AuthRes struct {
+	ID        int64
+	Success   bool
+	Challenge []byte // random nonce for the client to sign
+	Token     string // session token returned on successful auth
+	User      string // authenticated OS username
+	Error     string
+}
+
 // PacketReader is the interface that wraps Peek and Discard,
 // matching the signature of gnet.Conn for zero-copy read.
 type PacketReader interface {
@@ -201,6 +226,9 @@ var (
 	ErrMsgType = errors.New("unrecognized message type")
 	// ErrHeadSize guards against header reads shorter than HeadSize.
 	ErrHeadSize = errors.New("short head size")
+	// ErrAuthRequired is returned when a non-auth message is received before
+	// the connection has been authenticated.
+	ErrAuthRequired = errors.New("authentication required")
 )
 
 // ReadMessage reads one complete protocol frame from a PacketReader.
@@ -312,6 +340,10 @@ func DecodePre(head []byte) (MSG, uint32, uint32, error) {
 		msg = &HashReq{}
 	case HashResT:
 		msg = &HashRes{}
+	case AuthReqT:
+		msg = &AuthReq{}
+	case AuthResT:
+		msg = &AuthRes{}
 	default:
 		return nil, 0, 0, ErrMsgType
 	}

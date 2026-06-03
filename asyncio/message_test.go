@@ -37,6 +37,8 @@ func TestEncodeDecodePreRoundTrip(t *testing.T) {
 		{"WriteRes-fail", &WriteRes{ID: 6, Success: false, N: 0}, 0},
 		{"ReadReq", &ReadReq{ID: 7, Path: "/tmp/f", Offset: 0, Size: 4096}, 0},
 		{"ReadRes", &ReadRes{ID: 8, Success: true, N: 4096, Checksum: 0}, 4096},
+		{"AuthReq", &AuthReq{ID: 9, Token: "abc123"}, 0},
+		{"AuthRes", &AuthRes{ID: 10, Success: true, Challenge: []byte{1, 2, 3}}, 0},
 	}
 
 	for _, tc := range tests {
@@ -260,6 +262,12 @@ func TestGetID(t *testing.T) {
 	if id := (&HashRes{ID: 19}).GetID(); id != 19 {
 		t.Errorf("HashRes.GetID = %d", id)
 	}
+	if id := (&AuthReq{ID: 20}).GetID(); id != 20 {
+		t.Errorf("AuthReq.GetID = %d", id)
+	}
+	if id := (&AuthRes{ID: 21}).GetID(); id != 21 {
+		t.Errorf("AuthRes.GetID = %d", id)
+	}
 }
 
 func TestTypeConstants(t *testing.T) {
@@ -292,6 +300,36 @@ func TestTypeConstants(t *testing.T) {
 	}
 	if HashResT != 11 {
 		t.Errorf("HashResT = %d, want 11", HashResT)
+	}
+	if AuthReqT != 12 {
+		t.Errorf("AuthReqT = %d, want 12", AuthReqT)
+	}
+	if AuthResT != 13 {
+		t.Errorf("AuthResT = %d, want 13", AuthResT)
+	}
+}
+
+func TestAuthReqCBORRoundTrip(t *testing.T) {
+	req := &AuthReq{ID: 30, PubKey: []byte("ssh-ed25519 AAAA..."), Token: "tok_abc"}
+	bs := req.Encode()
+	var decoded AuthReq
+	if err := decoded.Decode(bs); err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if decoded.ID != req.ID || decoded.Token != req.Token || string(decoded.PubKey) != string(req.PubKey) {
+		t.Errorf("round-trip mismatch: %+v vs %+v", decoded, *req)
+	}
+}
+
+func TestAuthResCBORRoundTrip(t *testing.T) {
+	res := &AuthRes{ID: 31, Success: true, Challenge: []byte{0, 1, 2, 3, 4, 5}, Token: "tok_xyz", User: "felix"}
+	bs := res.Encode()
+	var decoded AuthRes
+	if err := decoded.Decode(bs); err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	if decoded.ID != res.ID || decoded.Success != res.Success || decoded.User != res.User || decoded.Token != res.Token || string(decoded.Challenge) != string(res.Challenge) {
+		t.Errorf("round-trip mismatch: %+v vs %+v", decoded, *res)
 	}
 }
 
