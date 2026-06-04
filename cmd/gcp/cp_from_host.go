@@ -27,6 +27,7 @@ func downloadFile(
 	useChecksum bool,
 	useSha256 bool,
 	compressionAlgo uint8,
+	quiet bool,
 ) error {
 	var (
 		res     clientWrappedMsg
@@ -82,7 +83,7 @@ func downloadFile(
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	err := processChunks(ctx, fileSize, chunkSize, 0, batch, state,
+	err := processChunks(ctx, fileSize, chunkSize, 0, batch, state, quiet,
 		func(ctx context.Context, offset, size int64, progressChan chan<- int64) error {
 			var (
 				res     clientWrappedMsg
@@ -176,6 +177,7 @@ func cpOneFileFromHost(
 	maxRetries int,
 	useSha256 bool,
 	compressionAlgo uint8,
+	quiet bool,
 ) (err error) {
-	return downloadFile(ctx, cc, src, target, chunkSize, cc.batch, maxRetries, cc.useChecksum, useSha256, compressionAlgo)
+	return downloadFile(ctx, cc, src, target, chunkSize, cc.batch, maxRetries, cc.useChecksum, useSha256, compressionAlgo, quiet)
 }

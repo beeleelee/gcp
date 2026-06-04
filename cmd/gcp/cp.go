@@ -122,6 +122,7 @@ func copySingle(
 	recursive bool,
 	useSha256 bool,
 	compressionAlgo uint8,
+	quiet bool,
 ) error {
 	srcRemote := isRemoteAddr(src)
 	dstRemote := isRemoteAddr(dst)
@@ -143,7 +144,7 @@ func copySingle(
 				target = target + filepath.Base(src)
 			}
 			logger.Log.Debug("copying directory", "src", src, "dst", target)
-			return cpDirToHost(ctx, cc, src, target, chunkSize, maxRetries, useSha256, compressionAlgo)
+			return cpDirToHost(ctx, cc, src, target, chunkSize, maxRetries, useSha256, compressionAlgo, quiet)
 		}
 	}
 
@@ -164,12 +165,12 @@ func copySingle(
 				return fmt.Errorf("source is a directory; use -r to copy directories")
 			}
 			return cpDirFromHost(ctx, cc, remotePath, target,
-				chunkSize, maxRetries, useSha256, compressionAlgo)
+				chunkSize, maxRetries, useSha256, compressionAlgo, quiet)
 		}
 
 		logger.Log.Debug("downloading file", "remote", remotePath, "local", target)
 		return cpOneFileFromHost(ctx, cc, remotePath, target,
-			chunkSize, maxRetries, useSha256, compressionAlgo)
+			chunkSize, maxRetries, useSha256, compressionAlgo, quiet)
 
 	case !srcRemote && dstRemote:
 		_, _, remotePath, _, _, err := parseRemoteAddr(dst, "5031")
@@ -182,7 +183,7 @@ func copySingle(
 		}
 		logger.Log.Debug("uploading file", "src", src, "dst", target)
 		return cpOneFileToHost(ctx, cc, src, target,
-			chunkSize, maxRetries, useSha256, compressionAlgo)
+			chunkSize, maxRetries, useSha256, compressionAlgo, quiet)
 
 	default:
 		return errors.New("one path must be local, the other remote")
@@ -245,6 +246,10 @@ var cpCmd = &cli.Command{
 		&cli.StringFlag{
 			Name:  "identity-file",
 			Usage: "SSH identity file (overrides SSH config IdentityFile)",
+		},
+		&cli.BoolFlag{
+			Name:  "quiet",
+			Usage: "suppress progress bar",
 		},
 	},
 	Action: func(c *cli.Context) (err error) {
@@ -332,6 +337,7 @@ var cpCmd = &cli.Command{
 		maxRetries := c.Int("retry")
 		useSha256 := c.Bool("sha256")
 		recursive := c.Bool("recursive")
+		quiet := c.Bool("quiet")
 
 		for _, src := range expanded {
 			target := dst
@@ -344,7 +350,7 @@ var cpCmd = &cli.Command{
 				}
 			}
 			if err := copySingle(ctx, src, target, cc,
-				chunkSize, maxRetries, recursive, useSha256, compressionAlgo); err != nil {
+				chunkSize, maxRetries, recursive, useSha256, compressionAlgo, quiet); err != nil {
 				return err
 			}
 		}

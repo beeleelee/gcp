@@ -20,6 +20,7 @@ func cpDirToHost(
 	maxRetries int,
 	useSha256 bool,
 	compressionAlgo uint8,
+	quiet bool,
 ) error {
 	return filepath.Walk(srcDir, func(path string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil {
@@ -42,6 +43,6 @@ func cpDirToHost(
 		}
 
 		logger.Log.Debug("uploading file", "src", path, "dst", remotePath)
-		return uploadFile(ctx, cc, path, remotePath, info, chunkSize, cc.batch, maxRetries, useSha256, compressionAlgo)
+		return uploadFile(ctx, cc, path, remotePath, info, chunkSize, cc.batch, maxRetries, useSha256, compressionAlgo, quiet)
 	})
 }

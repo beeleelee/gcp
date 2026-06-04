@@ -20,12 +20,13 @@ func cpOneFileToHost(
 	maxRetries int,
 	useSha256 bool,
 	compressionAlgo uint8,
+	quiet bool,
 ) (err error) {
 	sfinfo, err := os.Stat(src)
 	if err != nil {
 		return
 	}
-	return uploadFile(ctx, cc, src, target, sfinfo, chunkSize, cc.batch, maxRetries, useSha256, compressionAlgo)
+	return uploadFile(ctx, cc, src, target, sfinfo, chunkSize, cc.batch, maxRetries, useSha256, compressionAlgo, quiet)
 }
 
 // uploadFile orchestrates a single file upload to the remote host. It
@@ -43,6 +44,7 @@ func uploadFile(
 	maxRetries int,
 	useSha256 bool,
 	compressionAlgo uint8,
+	quiet bool,
 ) error {
 	state := loadResumeState(srcPath, target, info.Size(), chunkSize, batch)
 
@@ -75,7 +77,7 @@ func uploadFile(
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	err = processChunks(ctx, info.Size(), chunkSize, 0, batch, state,
+	err = processChunks(ctx, info.Size(), chunkSize, 0, batch, state, quiet,
 		func(ctx context.Context, offset, size int64, progressChan chan<- int64) error {
 			if err := uploadFileChunk(ctx, cc, sfd, target, offset, size, maxRetries, compressionAlgo); err != nil {
 				return err

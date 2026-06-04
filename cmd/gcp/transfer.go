@@ -183,6 +183,7 @@ func processChunks(
 	startOffset int64,
 	batch int,
 	state *resumeState,
+	quiet bool,
 	fn func(context.Context, int64, int64, chan<- int64) error,
 ) error {
 	ctx, cancel := context.WithCancel(ctx)
@@ -192,7 +193,11 @@ func processChunks(
 	sem := make(chan struct{}, batch)
 	errChan := make(chan error, batch)
 	progressChan := make(chan int64, batch+1)
-	go progressbar.Progress(ctx, fileSize, progressChan, time.Now(), time.Millisecond*200)
+	if quiet {
+		go drainProgress(ctx, progressChan)
+	} else {
+		go progressbar.Progress(ctx, fileSize, progressChan, time.Now(), time.Millisecond*200)
+	}
 	progressChan <- startOffset
 
 	offset := startOffset
@@ -248,6 +253,18 @@ func processChunks(
 		return err
 	default:
 		return nil
+	}
+}
+
+// drainProgress discards progress channel values until the context is
+// cancelled. Used instead of the progress bar when --quiet is set.
+func drainProgress(ctx context.Context, ch chan int64) {
+	for {
+		select {
+		case <-ch:
+		case <-ctx.Done():
+			return
+		}
 	}
 }
 
