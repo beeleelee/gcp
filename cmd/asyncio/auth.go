@@ -77,8 +77,9 @@ func sshConfigLookup(host string) *sshConfigEntry {
 // sessionInfo holds the authenticated user identity, stored in the session
 // store and in the gnet connection context after successful auth.
 type sessionInfo struct {
-	User string
-	Home string
+	User           string
+	Home           string
+	EncryptionKey *[32]byte // derived from the SSH public key during auth
 }
 
 // sessionStore is a goroutine-safe map of session tokens to user info.
@@ -369,4 +370,16 @@ func lookupHomeNSS(username string) (string, error) {
 		return "", err
 	}
 	return u.HomeDir, nil
+}
+
+// deriveEncryptionKey derives a 32-byte symmetric encryption key from an SSH
+// public key by SHA-256 hashing its authorized_keys format. Both client and
+// server derive the same key from the same public key, so no key exchange is
+// needed.
+func deriveEncryptionKey(pubKey ssh.PublicKey) *[32]byte {
+	marshaled := ssh.MarshalAuthorizedKey(pubKey)
+	hash := sha256.Sum256(marshaled)
+	key := new([32]byte)
+	copy(key[:], hash[:])
+	return key
 }

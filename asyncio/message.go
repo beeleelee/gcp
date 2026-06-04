@@ -77,17 +77,28 @@ const (
 	CompressionGzip = 1
 )
 
+// Encryption algorithm constants. EncryptionSecretBox uses XSalsa20-Poly1305
+// (nacl/secretbox) with a random 24-byte nonce prepended to the ciphertext.
+// Zero value (EncryptionNone) is accepted for backward compatibility but will
+// be rejected by newer servers that require encryption.
+const (
+	EncryptionNone     = 0
+	EncryptionSecretBox = 1
+)
+
 // WriteReq carries a chunk of file data to the server. Path identifies the
 // remote file (the same one created earlier), Offset is the byte position for
 // positional writes via WriteAt, and Checksum is a CRC-32 IEEE of the payload
 // (zero when checksums are disabled). Compression indicates how the payload
-// is compressed (CompressionNone = uncompressed).
+// is compressed (CompressionNone = uncompressed). Encryption indicates the
+// algorithm used to encrypt the payload (EncryptionNone = unencrypted).
 type WriteReq struct {
 	ID          int64
 	Path        string
 	Offset      int64
 	Checksum    uint32
 	Compression uint8
+	Encryption  uint8
 }
 
 // WriteRes reports the number of bytes the server wrote. N lets the client
@@ -102,26 +113,29 @@ type WriteRes struct {
 // ReadReq asks the server to return a chunk of a remote file. Offset and Size
 // define the byte range; the server reads with ReadAt and returns the data in
 // the payload of a ReadRes. Compression requests the server to compress the
-// response payload (CompressionNone = no compression).
+// response payload (CompressionNone = no compression). Encryption requests
+// encryption of the response payload (EncryptionNone = no encryption).
 type ReadReq struct {
 	ID          int64
 	Path        string
 	Offset      int64
 	Size        int64
 	Compression uint8
+	Encryption  uint8
 }
 
 // ReadRes carries the requested file data in the payload. N is the number of
 // bytes actually read (may be less than the requested Size at EOF), and
 // Checksum is the CRC-32 IEEE of the payload. Compression indicates the
-// algorithm used to compress the payload. Error contains the reason on
-// failure.
+// algorithm used to compress the payload. Encryption indicates the algorithm
+// used to encrypt the payload. Error contains the reason on failure.
 type ReadRes struct {
 	ID          int64
 	Success     bool
 	N           int64
 	Checksum    uint32
 	Compression uint8
+	Encryption  uint8
 	Error       string
 }
 

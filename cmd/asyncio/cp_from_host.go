@@ -120,7 +120,17 @@ func downloadFile(
 			}
 
 			readRes := res.msg.(*asyncio.ReadRes)
-			data, err := decompressChunk(res.payload, readRes.Compression)
+
+			payload := res.payload
+			if readRes.Encryption == asyncio.EncryptionSecretBox {
+				var decErr error
+				payload, decErr = decryptChunk(payload, cc.encryptionKey)
+				if decErr != nil {
+					return fmt.Errorf("decryption failed at offset %d: %w", offset, decErr)
+				}
+			}
+
+			data, err := decompressChunk(payload, readRes.Compression)
 			if err != nil {
 				return fmt.Errorf("decompression failed at offset %d: %w", offset, err)
 			}

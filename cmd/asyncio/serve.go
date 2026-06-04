@@ -36,11 +36,12 @@ const (
 // connAuth holds per-connection authentication state, stored in the gnet
 // connection context.
 type connAuth struct {
-	state    authState
-	challenge []byte
-	pubKey   []byte
-	user     string
-	home     string
+	state          authState
+	challenge      []byte
+	pubKey         []byte
+	user           string
+	home           string
+	encryptionKey *[32]byte
 }
 
 // copierServer implements the gnet event-loop server. It receives gcp protocol
@@ -199,9 +200,10 @@ func (c *copierServer) handleAuth(conn gnet.Conn, req *asyncio.AuthReq) {
 				return
 			}
 			setConnAuth(conn, &connAuth{
-				state: authOK,
-				user:  info.User,
-				home:  info.Home,
+				state:          authOK,
+				user:           info.User,
+				home:           info.Home,
+				encryptionKey: info.EncryptionKey,
 			})
 			asyncio.WriteMessage(conn, &asyncio.AuthRes{
 				ID:      req.ID,
@@ -246,10 +248,12 @@ func (c *copierServer) handleAuth(conn gnet.Conn, req *asyncio.AuthReq) {
 		}
 
 		token, info := c.sessions.Put(user, home)
+		info.EncryptionKey = deriveEncryptionKey(pubKey)
 		setConnAuth(conn, &connAuth{
-			state: authOK,
-			user:  info.User,
-			home:  info.Home,
+			state:          authOK,
+			user:           info.User,
+			home:           info.Home,
+			encryptionKey: info.EncryptionKey,
 		})
 
 		asyncio.WriteMessage(conn, &asyncio.AuthRes{
@@ -382,7 +386,18 @@ func (c *copierServer) write(conn gnet.Conn, req *asyncio.WriteReq, payload []by
 		return
 	}
 
-	data, err := decompressChunk(payload, req.Compression)
+	if req.Encryption != asyncio.EncryptionSecretBox {
+		c.writeFailed(conn, req, fmt.Errorf("unencrypted payload rejected"))
+		return
+	}
+
+	decrypted, err := decryptChunk(payload, ca.encryptionKey)
+	if err != nil {
+		c.writeFailed(conn, req, fmt.Errorf("decrypt: %w", err))
+		return
+	}
+
+	data, err := decompressChunk(decrypted, req.Compression)
 	if err != nil {
 		c.writeFailed(conn, req, err)
 		return
@@ -421,6 +436,11 @@ func (c *copierServer) writeFailed(conn gnet.Conn, req *asyncio.WriteReq, err er
 }
 
 func (c *copierServer) read(conn gnet.Conn, req *asyncio.ReadReq, ca *connAuth) {
+	if req.Encryption != asyncio.EncryptionSecretBox {
+		c.readFailed(conn, req, fmt.Errorf("unencrypted request rejected"))
+		return
+	}
+
 	spath, err := sandboxPath(ca, req.Path)
 	if err != nil {
 		c.readFailed(conn, req, err)
@@ -454,7 +474,13 @@ func (c *copierServer) read(conn gnet.Conn, req *asyncio.ReadReq, ca *connAuth) 
 		return
 	}
 
-	c.readSuccess(conn, req, compressed, algo, info.Size())
+	encrypted, err := encryptChunk(compressed, ca.encryptionKey)
+	if err != nil {
+		c.readFailed(conn, req, fmt.Errorf("encrypt: %w", err))
+		return
+	}
+
+	c.readSuccess(conn, req, encrypted, algo, asyncio.EncryptionSecretBox, info.Size())
 }
 
 func (c *copierServer) readFailed(conn gnet.Conn, req *asyncio.ReadReq, err error) {
@@ -469,7 +495,7 @@ func (c *copierServer) readFailed(conn gnet.Conn, req *asyncio.ReadReq, err erro
 	}, nil)
 }
 
-func (c *copierServer) readSuccess(conn gnet.Conn, req *asyncio.ReadReq, data []byte, compressionAlgo uint8, fileSize int64) {
+func (c *copierServer) readSuccess(conn gnet.Conn, req *asyncio.ReadReq, data []byte, compressionAlgo, encryptionAlgo uint8, fileSize int64) {
 	checksum := crc32.ChecksumIEEE(data)
 	asyncio.WriteMessage(conn, &asyncio.ReadRes{
 		ID:          req.ID,
@@ -477,6 +503,7 @@ func (c *copierServer) readSuccess(conn gnet.Conn, req *asyncio.ReadReq, data []
 		N:           int64(len(data)),
 		Checksum:    checksum,
 		Compression: compressionAlgo,
+		Encryption:  encryptionAlgo,
 	}, data)
 }
 

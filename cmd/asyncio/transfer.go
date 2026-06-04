@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -18,6 +19,7 @@ import (
 	"github.com/beeleelee/gcp/asyncio"
 	"github.com/beeleelee/gcp/cmd/progressbar"
 	"github.com/beeleelee/gcp/logger"
+	"golang.org/x/crypto/nacl/secretbox"
 )
 
 // resumeState tracks which chunks of a file transfer have been confirmed by
@@ -334,4 +336,35 @@ func decompressChunk(data []byte, algo uint8) ([]byte, error) {
 	default:
 		return data, nil
 	}
+}
+
+// encryptChunk encrypts data using XSalsa20-Poly1305 (nacl/secretbox) with a
+// random 24-byte nonce. Returns nonce || ciphertext.
+func encryptChunk(data []byte, key *[32]byte) ([]byte, error) {
+	if key == nil || len(data) == 0 {
+		return data, nil
+	}
+	var nonce [24]byte
+	if _, err := io.ReadFull(rand.Reader, nonce[:]); err != nil {
+		return nil, fmt.Errorf("encrypt nonce: %w", err)
+	}
+	return secretbox.Seal(nonce[:], data, &nonce, key), nil
+}
+
+// decryptChunk decrypts data that was encrypted with encryptChunk. Expects
+// input format: nonce[24] || ciphertext.
+func decryptChunk(data []byte, key *[32]byte) ([]byte, error) {
+	if key == nil || len(data) == 0 {
+		return data, nil
+	}
+	if len(data) < 24 {
+		return nil, fmt.Errorf("decrypt: data too short (%d bytes, need at least 24)", len(data))
+	}
+	var nonce [24]byte
+	copy(nonce[:], data[:24])
+	plain, ok := secretbox.Open(nil, data[24:], &nonce, key)
+	if !ok {
+		return nil, fmt.Errorf("decrypt: secretbox open failed")
+	}
+	return plain, nil
 }

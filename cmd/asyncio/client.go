@@ -58,6 +58,7 @@ type copierClient struct {
 	authToken     string
 	authUser      string
 	identityFile  string
+	encryptionKey *[32]byte
 	msgIn         chan clientRequestMsg
 	sendHandle    chan clientWrappedMsg
 	receiveHandle chan clientWrappedMsg
@@ -179,6 +180,7 @@ func (cc *copierClient) dialAndAuth() error {
 
 	cc.authToken = authRes.Token
 	cc.authUser = authRes.User
+	cc.encryptionKey = deriveEncryptionKey(pubKey)
 
 	for i := 0; i < cc.batch; i++ {
 		go cc.runConn()
@@ -449,19 +451,30 @@ func (cc *copierClient) Write(target string, off int64, payload []byte, compress
 		return clientWrappedMsg{}, err
 	}
 
+	encrypted, err := encryptChunk(compressed, cc.encryptionKey)
+	if err != nil {
+		return clientWrappedMsg{}, err
+	}
+
+	var encAlgo uint8 = asyncio.EncryptionNone
+	if cc.encryptionKey != nil {
+		encAlgo = asyncio.EncryptionSecretBox
+	}
+
 	req := &asyncio.WriteReq{
 		ID:          cc.genMsgID(),
 		Offset:      off,
 		Path:        target,
 		Compression: algo,
+		Encryption:  encAlgo,
 	}
-	if cc.useChecksum && len(compressed) > 0 {
-		req.Checksum = crc32.ChecksumIEEE(compressed)
+	if cc.useChecksum && len(encrypted) > 0 {
+		req.Checksum = crc32.ChecksumIEEE(encrypted)
 	}
 	cc.msgIn <- clientRequestMsg{
 		clientWrappedMsg: clientWrappedMsg{
 			msg:     req,
-			payload: compressed,
+			payload: encrypted,
 		},
 		resChan: ch,
 	}
@@ -475,6 +488,10 @@ func (cc *copierClient) Write(target string, off int64, payload []byte, compress
 
 func (cc *copierClient) Read(target string, off int64, size int64, compressionAlgo uint8) (clientWrappedMsg, error) {
 	ch := make(chan clientWrappedMsg)
+	var encAlgo uint8 = asyncio.EncryptionNone
+	if cc.encryptionKey != nil {
+		encAlgo = asyncio.EncryptionSecretBox
+	}
 	cc.msgIn <- clientRequestMsg{
 		clientWrappedMsg: clientWrappedMsg{
 			msg: &asyncio.ReadReq{
@@ -483,6 +500,7 @@ func (cc *copierClient) Read(target string, off int64, size int64, compressionAl
 				Size:        size,
 				Path:        target,
 				Compression: compressionAlgo,
+				Encryption:  encAlgo,
 			},
 		},
 		resChan: ch,
