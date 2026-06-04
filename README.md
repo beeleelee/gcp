@@ -2,13 +2,10 @@
 
 Copy files between local and hosts over TCP.
 
-> **Note:** The `blockio` (gRPC) module is **deprecated**. It is kept for reference but will not receive new features. Use the `gcp` (asyncio) module instead.
-
 ## Build
 
 ```
 make gcp        # builds asyncio binary: ./bin/gcp
-make blockio    # builds gRPC binary (deprecated)
 ```
 
 Tests:
@@ -112,8 +109,6 @@ Without these two bounds a malicious or corrupted header could set `msgSize = 0x
 - `asyncio/` — shared protocol library (message types, CBOR encode/decode, wire format)
 - `logger/` — zerolog wrapped as `slog.Logger`
 - `cmd/progressbar/` — real-time progress display using `go-humanize`
-- `blockio/` — deprecated gRPC variant (proto definition + generated code)
-
 ### Message types
 
 The custom TCP protocol uses a binary header with magic bytes (`0xA8 0xD5`), message type, and CBOR-encoded payloads:
