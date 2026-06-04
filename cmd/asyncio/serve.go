@@ -635,7 +635,7 @@ var serveCmd = &cli.Command{
 		&cli.StringFlag{
 			Name:  "listen",
 			Usage: "",
-			Value: "tcp://0.0.0.0:1717",
+			Value: "tcp://0.0.0.0:5031",
 		},
 		&cli.IntFlag{
 			Name:  "process-num",

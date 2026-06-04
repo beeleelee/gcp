@@ -11,7 +11,7 @@ Copy files between local and hosts.
 | `gcp`       | `cmd/asyncio/`          | `./bin/gcp`      | custom TCP + CBOR  |
 | ~~`blockio`~~ | ~~`cmd/blockio/`~~          | ~~`./bin/blockio`~~  | ~~gRPC~~ (deprecated) |
 
-Both default to port `1717`.
+The asyncio variant defaults to port `5031`.
 
 ## Build commands
 
@@ -32,22 +32,22 @@ go test -race -count=1 ./...  # with race detector
 Asyncio (default):
 ```
 # serve on host
-./bin/gcp serve --listen tcp://0.0.0.0:1717 --process-num 4 --multicore true
+./bin/gcp serve --listen tcp://0.0.0.0:5031 --process-num 4 --multicore true
 
 # copy file from local to host
-./bin/gcp cp --chunk 32768 --batch 4 ./src.txt host:1717/remote/path
+./bin/gcp cp --chunk 32768 --batch 4 ./src.txt host:5031/remote/path
 
 # download from host
-./bin/gcp cp --chunk 32768 --batch 4 host:1717/remote/path ./local_dst
+./bin/gcp cp --chunk 32768 --batch 4 host:5031/remote/path ./local_dst
 
 # with reliability options and compression
-./bin/gcp cp --timeout 15s --retry 3 --checksum true --compression gzip ./src.txt host:1717/dst
+./bin/gcp cp --timeout 15s --retry 3 --checksum true --compression gzip ./src.txt host:5031/dst
 
 # copy directory recursively
-./bin/gcp cp -r ./mydir host:1717/dst
+./bin/gcp cp -r ./mydir host:5031/dst
 
 # dry-run (show what would be transferred without doing it)
-./bin/gcp cp --dry-run ./src.txt host:1717/dst
+./bin/gcp cp --dry-run ./src.txt host:5031/dst
 ```
 
 Blockio (gRPC variant, deprecated):

@@ -30,7 +30,6 @@ const challengeLen = 32
 type sshConfigEntry struct {
 	Host         string // alias from the address (e.g. "myserver")
 	HostName     string // resolved dial target (e.g. "192.168.1.100")
-	Port         string // from SSH config, or empty
 	User         string // from SSH config, or empty
 	IdentityFile string // from SSH config, or empty
 }
@@ -57,9 +56,6 @@ func sshConfigLookup(host string) *sshConfigEntry {
 
 	if v, err := cfg.Get(host, "HostName"); err == nil && v != "" {
 		entry.HostName = v
-	}
-	if v, err := cfg.Get(host, "Port"); err == nil && v != "" {
-		entry.Port = v
 	}
 	if v, err := cfg.Get(host, "User"); err == nil && v != "" {
 		entry.User = v

@@ -51,9 +51,9 @@ func parseCompressionFlag(s string) uint8 {
 
 // parseRemoteAddr splits a "user@host:/path" or "host:/path" remote address
 // into hostPort, user, path, identityFile, and hostAlias. The defaultPort is
-// used when neither --port nor SSH config specify one. The host is looked up
-// in SSH config for HostName resolution, Port, User, and IdentityFile. If no
-// SSH config match, the host is used as-is.
+// used when --port is not specified. The host is looked up in SSH config for
+// HostName resolution, User, and IdentityFile. If no SSH config match, the
+// host is used as-is.
 func parseRemoteAddr(s string, defaultPort string) (hostPort, userName, path, identityFile, hostAlias string, err error) {
 	// Split on last @ for optional user.
 	rest := s
@@ -84,9 +84,6 @@ func parseRemoteAddr(s string, defaultPort string) (hostPort, userName, path, id
 	if entry != nil {
 		if entry.HostName != "" {
 			hostName = entry.HostName
-		}
-		if entry.Port != "" {
-			port = entry.Port
 		}
 		if userName == "" && entry.User != "" {
 			userName = entry.User
@@ -137,7 +134,7 @@ func copySingle(
 			if !dstRemote {
 				return errors.New("downloading directories is not yet supported")
 			}
-			_, _, remotePath, _, _, err := parseRemoteAddr(dst, "1717")
+			_, _, remotePath, _, _, err := parseRemoteAddr(dst, "5031")
 			if err != nil {
 				return err
 			}
@@ -152,7 +149,7 @@ func copySingle(
 
 	switch {
 	case srcRemote && !dstRemote:
-		_, _, remotePath, _, _, err := parseRemoteAddr(src, "1717")
+		_, _, remotePath, _, _, err := parseRemoteAddr(src, "5031")
 		if err != nil {
 			return err
 		}
@@ -175,7 +172,7 @@ func copySingle(
 			chunkSize, maxRetries, useSha256, compressionAlgo)
 
 	case !srcRemote && dstRemote:
-		_, _, remotePath, _, _, err := parseRemoteAddr(dst, "1717")
+		_, _, remotePath, _, _, err := parseRemoteAddr(dst, "5031")
 		if err != nil {
 			return err
 		}
@@ -242,7 +239,7 @@ var cpCmd = &cli.Command{
 		},
 		&cli.IntFlag{
 			Name:  "port",
-			Value: 1717,
+			Value: 5031,
 			Usage: "remote port",
 		},
 		&cli.StringFlag{

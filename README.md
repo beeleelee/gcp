@@ -22,34 +22,34 @@ go test -race -count=1 ./...
 ### Serve (on remote host)
 
 ```
-./bin/gcp serve --listen tcp://0.0.0.0:1717 --process-num 4 --multicore true
+./bin/gcp serve --listen tcp://0.0.0.0:5031 --process-num 4 --multicore true
 ```
 
 ### Upload (local to remote)
 
 ```
-./bin/gcp cp ./src.txt host:1717/remote/path
-./bin/gcp cp -r ./mydir host:1717/remote/dir
+./bin/gcp cp ./src.txt host:5031/remote/path
+./bin/gcp cp -r ./mydir host:5031/remote/dir
 ```
 
 Omitting the remote path or ending with `/` appends the source basename:
 
 ```
-./bin/gcp cp ./src.txt host:1717/
+./bin/gcp cp ./src.txt host:5031/
 # copies to <remote>/src.txt
 ```
 
 ### Download (remote to local)
 
 ```
-./bin/gcp cp host:1717/remote/path ./local_dst
-./bin/gcp cp -r host:1717/remote/dir ./local_dir
+./bin/gcp cp host:5031/remote/path ./local_dst
+./bin/gcp cp -r host:5031/remote/dir ./local_dir
 ```
 
 Omitting the local path downloads to the current directory:
 
 ```
-./bin/gcp cp host:1717/remote/src.txt
+./bin/gcp cp host:5031/remote/src.txt
 # downloads to ./src.txt
 ```
 
@@ -57,16 +57,16 @@ Omitting the local path downloads to the current directory:
 
 ```
 # multiple files
-./bin/gcp cp a.txt b.txt c.txt host:1717/dst/
+./bin/gcp cp a.txt b.txt c.txt host:5031/dst/
 
 # local glob (quoted to prevent shell expansion)
-./bin/gcp cp 'src/*.txt' host:1717/dst/
+./bin/gcp cp 'src/*.txt' host:5031/dst/
 
 # recursive local glob (walks directories matched by the pattern)
-./bin/gcp cp -r '/src/dir/*' host:1717/dst/
+./bin/gcp cp -r '/src/dir/*' host:5031/dst/
 
 # remote glob (matched against ReadDir entries)
-./bin/gcp cp 'host:1717/dir/*.txt' ./local/
+./bin/gcp cp 'host:5031/dir/*.txt' ./local/
 ```
 
 When copying multiple sources, the destination is treated as a directory.
@@ -74,14 +74,14 @@ When copying multiple sources, the destination is treated as a directory.
 ### Dry-run
 
 ```
-./bin/gcp cp --dry-run ./src.txt host:1717/dst
-./bin/gcp cp --dry-run 'host:1717/dir/*.txt' ./local/
+./bin/gcp cp --dry-run ./src.txt host:5031/dst
+./bin/gcp cp --dry-run 'host:5031/dir/*.txt' ./local/
 ```
 
 ### Reliability options
 
 ```
-./bin/gcp cp --timeout 15s --retry 3 --checksum true ./src.txt host:1717/dst
+./bin/gcp cp --timeout 15s --retry 3 --checksum true ./src.txt host:5031/dst
 ```
 
 ### `cp` flags

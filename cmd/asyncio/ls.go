@@ -60,7 +60,7 @@ var lsCmd = &cli.Command{
 		},
 		&cli.IntFlag{
 			Name:  "port",
-			Value: 1717,
+			Value: 5031,
 			Usage: "remote port",
 		},
 	},
