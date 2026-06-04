@@ -6,7 +6,7 @@ Copy files between local and hosts.
 
 | make target | source dir     | output binary | transport         |
 |-------------|----------------|---------------|-------------------|
-| `gcp`       | `cmd/asyncio/` | `./bin/gcp`   | custom TCP + CBOR |
+| `gcp`       | `cmd/gcp/` | `./bin/gcp`   | custom TCP + CBOR |
 
 The asyncio variant defaults to port `5031`.
 
@@ -62,7 +62,7 @@ Log level: `--level` or `-L` flag (`error` default, accepts `info`, `debug`, etc
 
 ## Architecture notes
 
-- `cmd/asyncio/` is the primary/main CLI entrypoint. The module root is **not** a `main` package.
+- `cmd/gcp/` is the primary/main CLI entrypoint. The module root is **not** a `main` package.
 - Asyncio uses `gnet` (event-loop networking) + CBOR message encoding with a custom binary protocol (magic bytes `0xA8 0xD5`).
 - `message/` package is the shared protocol library (message types, encode/decode). Not specific to either variant.
 - `logger/` wraps `zerolog` into a `slog.Logger` via `zerolog.NewSlogHandler`.
@@ -70,7 +70,7 @@ Log level: `--level` or `-L` flag (`error` default, accepts `info`, `debug`, etc
 
 ## Important quirks
 
-- `make gcp` strips debug info (`-ldflags="-s -w"`); use `go build` directly from `cmd/asyncio` for debugging.
+- `make gcp` strips debug info (`-ldflags="-s -w"`); use `go build` directly from `cmd/gcp` for debugging.
 - Asyncio server never closes `CreateRes`/`WriteRes` connections on client response — it keeps the conn open.
 - The asyncio variant supports `--from` for download: `./bin/gcp cp --from /remote/path ./local_dst`
 

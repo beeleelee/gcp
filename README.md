@@ -105,7 +105,7 @@ Without these two bounds a malicious or corrupted header could set `msgSize = 0x
 
 ## Architecture
 
-- `cmd/asyncio/` — primary CLI entrypoint and copy logic
+- `cmd/gcp/` — primary CLI entrypoint and copy logic
 - `message/` — shared protocol library (message types, CBOR encode/decode, wire format)
 - `logger/` — zerolog wrapped as `slog.Logger`
 - `cmd/progressbar/` — real-time progress display using `go-humanize`

@@ -57,7 +57,7 @@ func main() {
 
 	fset := token.NewFileSet()
 
-	dirs := []string{"cmd/asyncio", "message", "cmd/progressbar", "logger"}
+	dirs := []string{"cmd/gcp", "message", "cmd/progressbar", "logger"}
 	for _, dir := range dirs {
 		filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 			if err != nil || info.IsDir() || !strings.HasSuffix(path, ".go") {
