@@ -1,4 +1,4 @@
-package asyncio
+package message
 
 import "github.com/fxamacker/cbor/v2"
 

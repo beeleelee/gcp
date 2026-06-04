@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/beeleelee/gcp/asyncio"
+	"github.com/beeleelee/gcp/message"
 	"github.com/beeleelee/gcp/logger"
 )
 
@@ -57,7 +57,7 @@ func uploadFile(
 		if err != nil {
 			return err
 		}
-		createRes := res.msg.(*asyncio.CreateRes)
+		createRes := res.msg.(*message.CreateRes)
 		if !createRes.Success {
 			return fmt.Errorf("remote create failed: %s", createRes.Error)
 		}
@@ -123,7 +123,7 @@ func uploadFileChunk(ctx context.Context, cc *copierClient, sfd *os.File, target
 		if wErr != nil {
 			writeErr = wErr
 		} else {
-			writeRes := res.msg.(*asyncio.WriteRes)
+			writeRes := res.msg.(*message.WriteRes)
 			if !writeRes.Success {
 				writeErr = fmt.Errorf("remote write failed at offset %d: %s", off, writeRes.Error)
 			} else {

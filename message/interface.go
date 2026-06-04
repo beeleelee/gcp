@@ -1,4 +1,4 @@
-// Package asyncio defines the wire protocol for gcp file transfers.
+// Package message defines the wire protocol for gcp file transfers.
 //
 // Each message on the wire is a frame:
 //
@@ -8,7 +8,7 @@
 //	└──────────┴──────────┴────────────┴──────────────────────┴──────────────────────────┘
 //
 // HeadSize = 11 bytes. MaxMsgSize = 64 KB, MaxPayloadSize = 16 MB.
-package asyncio
+package message
 
 // MSG is the interface every protocol message must implement.
 // Each message type carries fields specific to its role (Create, Write, Read,

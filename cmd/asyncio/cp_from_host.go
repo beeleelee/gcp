@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/beeleelee/gcp/asyncio"
+	"github.com/beeleelee/gcp/message"
 	"github.com/beeleelee/gcp/logger"
 )
 
@@ -30,13 +30,13 @@ func downloadFile(
 ) error {
 	var (
 		res     clientWrappedMsg
-		statRes *asyncio.StatRes
+		statRes *message.StatRes
 		statErr error
 	)
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		res, statErr = cc.Stat(src)
 		if statErr == nil {
-			statRes = res.msg.(*asyncio.StatRes)
+			statRes = res.msg.(*message.StatRes)
 			if !statRes.Success {
 				statErr = fmt.Errorf("stat failed: %s", statRes.Error)
 			} else if statRes.IsDir {
@@ -97,7 +97,7 @@ func downloadFile(
 				}
 				res, readErr = cc.Read(src, offset, size, compressionAlgo)
 				if readErr == nil {
-					readRes := res.msg.(*asyncio.ReadRes)
+					readRes := res.msg.(*message.ReadRes)
 					if !readRes.Success {
 						readErr = fmt.Errorf("read failed at offset %d: %s", offset, readRes.Error)
 					} else if useChecksum && readRes.Checksum != 0 && crc32.ChecksumIEEE(res.payload) != readRes.Checksum {
@@ -119,10 +119,10 @@ func downloadFile(
 				return readErr
 			}
 
-			readRes := res.msg.(*asyncio.ReadRes)
+			readRes := res.msg.(*message.ReadRes)
 
 			payload := res.payload
-			if readRes.Encryption == asyncio.EncryptionSecretBox {
+			if readRes.Encryption == message.EncryptionSecretBox {
 				var decErr error
 				payload, decErr = decryptChunk(payload, cc.encryptionKey)
 				if decErr != nil {

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beeleelee/gcp/asyncio"
+	"github.com/beeleelee/gcp/message"
 )
 
 // hasGlob checks whether the base name of a path contains any shell glob
@@ -90,7 +90,7 @@ func expandRemoteSources(
 	if err != nil {
 		return nil, err
 	}
-	dirRes := res.msg.(*asyncio.ReadDirRes)
+	dirRes := res.msg.(*message.ReadDirRes)
 	if !dirRes.Success {
 		return nil, fmt.Errorf("readdir failed for %s", parent)
 	}

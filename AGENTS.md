@@ -16,7 +16,7 @@ The asyncio variant defaults to port `5031`.
 make gcp        # builds asyncio binary with -ldflags="-s -w"
 ```
 
-No CI or linter config. Tests live in `asyncio/`, `logger/`, `cmd/progressbar/`.
+No CI or linter config. Tests live in `message/`, `logger/`, `cmd/progressbar/`.
 ```
 go test -count=1 ./...        # all tests
 go test -race -count=1 ./...  # with race detector
@@ -64,7 +64,7 @@ Log level: `--level` or `-L` flag (`error` default, accepts `info`, `debug`, etc
 
 - `cmd/asyncio/` is the primary/main CLI entrypoint. The module root is **not** a `main` package.
 - Asyncio uses `gnet` (event-loop networking) + CBOR message encoding with a custom binary protocol (magic bytes `0xA8 0xD5`).
-- `asyncio/` package is the shared protocol library (message types, encode/decode). Not specific to either variant.
+- `message/` package is the shared protocol library (message types, encode/decode). Not specific to either variant.
 - `logger/` wraps `zerolog` into a `slog.Logger` via `zerolog.NewSlogHandler`.
 - `cmd/progressbar/` provides a real-time progress display using `go-humanize`.
 
@@ -76,7 +76,7 @@ Log level: `--level` or `-L` flag (`error` default, accepts `info`, `debug`, etc
 
 ## Known bugs resolved
 
-- **2026-05-22**: Client hang on upload (`handleReceive` infinite loop). Root cause: `client.go:handleReceive` checked `readSize == asyncio.HeadSize` to parse headers and allocate buffers, but `readSize` was never incremented in that branch. This caused a busy-loop that allocated memory on every iteration without ever reading response data. Fix: changed condition to `len(bufMsg) == 0`, which only fires once after the header is read.
+- **2026-05-22**: Client hang on upload (`handleReceive` infinite loop). Root cause: `client.go:handleReceive` checked `readSize == message.HeadSize` to parse headers and allocate buffers, but `readSize` was never incremented in that branch. This caused a busy-loop that allocated memory on every iteration without ever reading response data. Fix: changed condition to `len(bufMsg) == 0`, which only fires once after the header is read.
 
 
 ## Prebuilt binaries

@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/beeleelee/gcp/asyncio"
+	"github.com/beeleelee/gcp/message"
 	"github.com/beeleelee/gcp/logger"
 )
 
@@ -48,7 +48,7 @@ func walkRemoteDir(
 	if err != nil {
 		return err
 	}
-	sr := statRes.msg.(*asyncio.StatRes)
+	sr := statRes.msg.(*message.StatRes)
 	if sr.Success {
 		if err := os.Chmod(target, os.FileMode(sr.Mode).Perm()); err != nil {
 			return err
@@ -59,7 +59,7 @@ func walkRemoteDir(
 	if err != nil {
 		return err
 	}
-	dirRes := res.msg.(*asyncio.ReadDirRes)
+	dirRes := res.msg.(*message.ReadDirRes)
 	if !dirRes.Success {
 		return fmt.Errorf("readdir failed for %s", srcDir)
 	}

@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/beeleelee/gcp/asyncio"
+	"github.com/beeleelee/gcp/message"
 	"github.com/beeleelee/gcp/cmd/progressbar"
 	"github.com/beeleelee/gcp/logger"
 	"golang.org/x/crypto/nacl/secretbox"
@@ -262,7 +262,7 @@ func verifyFileHash(ctx context.Context, cc *copierClient, remotePath, localPath
 	if err != nil {
 		return fmt.Errorf("hash request failed: %w", err)
 	}
-	hashRes := res.msg.(*asyncio.HashRes)
+	hashRes := res.msg.(*message.HashRes)
 	if !hashRes.Success {
 		return fmt.Errorf("hash failed: %s", hashRes.Error)
 	}
@@ -296,37 +296,37 @@ func verifyFileHash(ctx context.Context, cc *copierClient, remotePath, localPath
 // (CompressionGzip, etc.). If the compressed result is not smaller than
 // the original, the original is returned as-is (auto-skip).
 func compressChunk(data []byte, algo uint8) ([]byte, uint8, error) {
-	if algo == asyncio.CompressionNone || len(data) == 0 {
-		return data, asyncio.CompressionNone, nil
+	if algo == message.CompressionNone || len(data) == 0 {
+		return data, message.CompressionNone, nil
 	}
 	switch algo {
-	case asyncio.CompressionGzip:
+	case message.CompressionGzip:
 		var buf bytes.Buffer
 		zw, _ := gzip.NewWriterLevel(&buf, gzip.DefaultCompression)
 		if _, err := zw.Write(data); err != nil {
-			return nil, asyncio.CompressionNone, err
+			return nil, message.CompressionNone, err
 		}
 		if err := zw.Close(); err != nil {
-			return nil, asyncio.CompressionNone, err
+			return nil, message.CompressionNone, err
 		}
 		compressed := buf.Bytes()
 		if len(compressed) >= len(data) {
-			return data, asyncio.CompressionNone, nil
+			return data, message.CompressionNone, nil
 		}
 		return compressed, algo, nil
 	default:
-		return data, asyncio.CompressionNone, nil
+		return data, message.CompressionNone, nil
 	}
 }
 
 // decompressChunk decompresses data using the algorithm indicated by algo.
 // If algo is CompressionNone the data is returned verbatim.
 func decompressChunk(data []byte, algo uint8) ([]byte, error) {
-	if algo == asyncio.CompressionNone || len(data) == 0 {
+	if algo == message.CompressionNone || len(data) == 0 {
 		return data, nil
 	}
 	switch algo {
-	case asyncio.CompressionGzip:
+	case message.CompressionGzip:
 		zr, err := gzip.NewReader(bytes.NewReader(data))
 		if err != nil {
 			return nil, err

@@ -1,4 +1,4 @@
-package asyncio
+package message
 
 import (
 	"encoding/binary"

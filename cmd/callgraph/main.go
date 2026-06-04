@@ -30,7 +30,7 @@ var (
 		"c": true, "cs": true, "srv": true, "cc": true,
 	}
 	knownPackages = map[string]bool{
-		"asyncio": true, "logger": true,
+		"message": true, "logger": true,
 	}
 	fileColors = map[string]string{
 		"main.go":             "#4361ee",
@@ -57,7 +57,7 @@ func main() {
 
 	fset := token.NewFileSet()
 
-	dirs := []string{"cmd/asyncio", "asyncio", "cmd/progressbar", "logger"}
+	dirs := []string{"cmd/asyncio", "message", "cmd/progressbar", "logger"}
 	for _, dir := range dirs {
 		filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 			if err != nil || info.IsDir() || !strings.HasSuffix(path, ".go") {
@@ -325,7 +325,7 @@ func relFile(path string) string {
 	if idx := strings.Index(path, "cmd/"); idx >= 0 {
 		return path[idx:]
 	}
-	if idx := strings.Index(path, "asyncio/"); idx >= 0 {
+	if idx := strings.Index(path, "message/"); idx >= 0 {
 		return path[idx:]
 	}
 	if idx := strings.Index(path, "logger/"); idx >= 0 {

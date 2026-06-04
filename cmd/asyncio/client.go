@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/beeleelee/gcp/asyncio"
+	"github.com/beeleelee/gcp/message"
 	"github.com/beeleelee/gcp/logger"
 	"golang.org/x/crypto/ssh"
 )
@@ -23,7 +23,7 @@ var randReader = rand.Reader
 
 // clientWrappedMsg pairs a decoded protocol message with its payload.
 type clientWrappedMsg struct {
-	msg     asyncio.MSG
+	msg     message.MSG
 	payload []byte
 }
 
@@ -131,7 +131,7 @@ func (cc *copierClient) dialAndAuth() error {
 	pubKeyBytes := pubKey.Marshal()
 
 	// Step 1: send public key, receive challenge
-	if err := asyncio.WriteMessage(conn, &asyncio.AuthReq{
+	if err := message.WriteMessage(conn, &message.AuthReq{
 		ID:     1,
 		User:   cc.authUser,
 		PubKey: pubKeyBytes,
@@ -143,7 +143,7 @@ func (cc *copierClient) dialAndAuth() error {
 	if err != nil {
 		return fmt.Errorf("auth recv challenge: %w", err)
 	}
-	challengeRes, ok := resp.(*asyncio.AuthRes)
+	challengeRes, ok := resp.(*message.AuthRes)
 	if !ok || challengeRes.Success {
 		return fmt.Errorf("unexpected auth response")
 	}
@@ -156,7 +156,7 @@ func (cc *copierClient) dialAndAuth() error {
 	}
 	sigBytes := ssh.Marshal(sig)
 
-	if err := asyncio.WriteMessage(conn, &asyncio.AuthReq{
+	if err := message.WriteMessage(conn, &message.AuthReq{
 		ID:        2,
 		User:      cc.authUser,
 		PubKey:    pubKeyBytes,
@@ -169,7 +169,7 @@ func (cc *copierClient) dialAndAuth() error {
 	if err != nil {
 		return fmt.Errorf("auth recv result: %w", err)
 	}
-	authRes, ok := resp.(*asyncio.AuthRes)
+	authRes, ok := resp.(*message.AuthRes)
 	if !ok || !authRes.Success {
 		errMsg := "auth denied"
 		if ok && authRes.Error != "" {
@@ -237,7 +237,7 @@ func (cc *copierClient) runConn() {
 // tokenAuth performs a fast session-token authentication on an already-dialed
 // connection. It sends AuthReq{Token} and expects AuthRes{Success: true}.
 func (cc *copierClient) tokenAuth(conn net.Conn) error {
-	if err := asyncio.WriteMessage(conn, &asyncio.AuthReq{
+	if err := message.WriteMessage(conn, &message.AuthReq{
 		ID:    0,
 		Token: cc.authToken,
 	}, nil); err != nil {
@@ -247,7 +247,7 @@ func (cc *copierClient) tokenAuth(conn net.Conn) error {
 	if err != nil {
 		return err
 	}
-	authRes, ok := resp.(*asyncio.AuthRes)
+	authRes, ok := resp.(*message.AuthRes)
 	if !ok || !authRes.Success {
 		return fmt.Errorf("token auth rejected")
 	}
@@ -256,15 +256,15 @@ func (cc *copierClient) tokenAuth(conn net.Conn) error {
 
 // readResp reads one complete protocol frame from a net.Conn. It is used
 // for synchronous auth exchanges before the channel-based pipeline starts.
-func readResp(conn net.Conn) (asyncio.MSG, error) {
-	head := make([]byte, asyncio.HeadSize)
+func readResp(conn net.Conn) (message.MSG, error) {
+	head := make([]byte, message.HeadSize)
 	if _, err := io.ReadFull(conn, head); err != nil {
 		return nil, err
 	}
-	if !asyncio.MagicNumberCheck(head[0], head[1]) {
-		return nil, asyncio.ErrBadProtocol
+	if !message.MagicNumberCheck(head[0], head[1]) {
+		return nil, message.ErrBadProtocol
 	}
-	msg, msgSize, payloadSize, err := asyncio.DecodePre(head)
+	msg, msgSize, payloadSize, err := message.DecodePre(head)
 	if err != nil {
 		return nil, err
 	}
@@ -297,7 +297,7 @@ func (cc *copierClient) handleSend(conn net.Conn) {
 			msg := wmsg.msg
 			payload := wmsg.payload
 			logger.Log.Debug("sending msg", "type", msg.Type(), "id", msg.GetID(), "payloadLen", len(payload))
-			head, msgbs := asyncio.EncodeMsg(msg, len(payload))
+			head, msgbs := message.EncodeMsg(msg, len(payload))
 			if cc.timeout > 0 {
 				conn.SetWriteDeadline(time.Now().Add(cc.timeout))
 			}
@@ -324,7 +324,7 @@ func (cc *copierClient) handleSend(conn net.Conn) {
 // and magicNumChecked variables track the machine's state across Read calls.
 func (cc *copierClient) handleReceive(conn net.Conn) {
 	defer conn.Close()
-	bufHead := make([]byte, asyncio.HeadSize)
+	bufHead := make([]byte, message.HeadSize)
 	readSize := 0
 	var bufMsg []byte
 	var payload []byte
@@ -335,7 +335,7 @@ func (cc *copierClient) handleReceive(conn net.Conn) {
 		case <-cc.ctx.Done():
 			return
 		default:
-			if readSize < asyncio.HeadSize {
+			if readSize < message.HeadSize {
 				buf = bufHead[readSize:]
 				if cc.timeout > 0 {
 					conn.SetReadDeadline(time.Now().Add(cc.timeout))
@@ -347,7 +347,7 @@ func (cc *copierClient) handleReceive(conn net.Conn) {
 				}
 				readSize += n
 				if readSize > 1 && !magicNumChecked {
-					if !asyncio.MagicNumberCheck(bufHead[0], bufHead[1]) {
+					if !message.MagicNumberCheck(bufHead[0], bufHead[1]) {
 						logger.Log.Debug("bad protocol")
 						return
 					} else {
@@ -355,36 +355,36 @@ func (cc *copierClient) handleReceive(conn net.Conn) {
 					}
 				}
 			} else if len(bufMsg) == 0 {
-				msgSize := binary.BigEndian.Uint32(bufHead[3 : 3+asyncio.MessageSize])
-				payloadSize := binary.BigEndian.Uint32(bufHead[3+asyncio.MessageSize:])
-				if msgSize > asyncio.MaxMsgSize || payloadSize > asyncio.MaxPayloadSize {
+				msgSize := binary.BigEndian.Uint32(bufHead[3 : 3+message.MessageSize])
+				payloadSize := binary.BigEndian.Uint32(bufHead[3+message.MessageSize:])
+				if msgSize > message.MaxMsgSize || payloadSize > message.MaxPayloadSize {
 					logger.Log.Debug("bad protocol: oversized message", "msgSize", msgSize, "payloadSize", payloadSize)
 					return
 				}
 				bufMsg = make([]byte, msgSize)
 				payload = make([]byte, payloadSize)
-			} else if readSize < asyncio.HeadSize+len(bufMsg) {
+			} else if readSize < message.HeadSize+len(bufMsg) {
 				if cc.timeout > 0 {
 					conn.SetReadDeadline(time.Now().Add(cc.timeout))
 				}
-				n, err := conn.Read(bufMsg[readSize-asyncio.HeadSize:])
+				n, err := conn.Read(bufMsg[readSize-message.HeadSize:])
 				if err != nil {
 					logger.Log.Debug("read error", "err", err)
 					return
 				}
 				readSize += n
-			} else if readSize < asyncio.HeadSize+len(bufMsg)+len(payload) {
+			} else if readSize < message.HeadSize+len(bufMsg)+len(payload) {
 				if cc.timeout > 0 {
 					conn.SetReadDeadline(time.Now().Add(cc.timeout))
 				}
-				n, err := conn.Read(payload[readSize-asyncio.HeadSize-len(bufMsg):])
+				n, err := conn.Read(payload[readSize-message.HeadSize-len(bufMsg):])
 				if err != nil {
 					logger.Log.Debug("read error", "err", err)
 					return
 				}
 				readSize += n
 			} else {
-				msg, _, _, err := asyncio.DecodePre(bufHead)
+				msg, _, _, err := message.DecodePre(bufHead)
 				if err != nil {
 					logger.Log.Debug("decode error", "err", err)
 					return
@@ -423,7 +423,7 @@ func (cc *copierClient) Create(target string, size int64, mode fs.FileMode) (cli
 	ch := make(chan clientWrappedMsg)
 	cc.msgIn <- clientRequestMsg{
 		clientWrappedMsg: clientWrappedMsg{
-			msg: &asyncio.CreateReq{
+			msg: &message.CreateReq{
 				ID:   cc.genMsgID(),
 				Size: size,
 				Mode: uint32(mode),
@@ -456,12 +456,12 @@ func (cc *copierClient) Write(target string, off int64, payload []byte, compress
 		return clientWrappedMsg{}, err
 	}
 
-	var encAlgo uint8 = asyncio.EncryptionNone
+	var encAlgo uint8 = message.EncryptionNone
 	if cc.encryptionKey != nil {
-		encAlgo = asyncio.EncryptionSecretBox
+		encAlgo = message.EncryptionSecretBox
 	}
 
-	req := &asyncio.WriteReq{
+	req := &message.WriteReq{
 		ID:          cc.genMsgID(),
 		Offset:      off,
 		Path:        target,
@@ -488,13 +488,13 @@ func (cc *copierClient) Write(target string, off int64, payload []byte, compress
 
 func (cc *copierClient) Read(target string, off int64, size int64, compressionAlgo uint8) (clientWrappedMsg, error) {
 	ch := make(chan clientWrappedMsg)
-	var encAlgo uint8 = asyncio.EncryptionNone
+	var encAlgo uint8 = message.EncryptionNone
 	if cc.encryptionKey != nil {
-		encAlgo = asyncio.EncryptionSecretBox
+		encAlgo = message.EncryptionSecretBox
 	}
 	cc.msgIn <- clientRequestMsg{
 		clientWrappedMsg: clientWrappedMsg{
-			msg: &asyncio.ReadReq{
+			msg: &message.ReadReq{
 				ID:          cc.genMsgID(),
 				Offset:      off,
 				Size:        size,
@@ -517,7 +517,7 @@ func (cc *copierClient) ReadDir(target string) (clientWrappedMsg, error) {
 	ch := make(chan clientWrappedMsg)
 	cc.msgIn <- clientRequestMsg{
 		clientWrappedMsg: clientWrappedMsg{
-			msg: &asyncio.ReadDirReq{
+			msg: &message.ReadDirReq{
 				ID:   cc.genMsgID(),
 				Path: target,
 			},
@@ -536,7 +536,7 @@ func (cc *copierClient) Stat(target string) (clientWrappedMsg, error) {
 	ch := make(chan clientWrappedMsg)
 	cc.msgIn <- clientRequestMsg{
 		clientWrappedMsg: clientWrappedMsg{
-			msg: &asyncio.StatReq{
+			msg: &message.StatReq{
 				ID:   cc.genMsgID(),
 				Path: target,
 			},
@@ -555,7 +555,7 @@ func (cc *copierClient) Hash(target string) (clientWrappedMsg, error) {
 	ch := make(chan clientWrappedMsg)
 	cc.msgIn <- clientRequestMsg{
 		clientWrappedMsg: clientWrappedMsg{
-			msg: &asyncio.HashReq{
+			msg: &message.HashReq{
 				ID:   cc.genMsgID(),
 				Path: target,
 			},

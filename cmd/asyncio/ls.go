@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beeleelee/gcp/asyncio"
+	"github.com/beeleelee/gcp/message"
 	"github.com/dustin/go-humanize"
 	"github.com/urfave/cli/v2"
 )
@@ -30,7 +30,7 @@ func timeString(unix int64) string {
 	return time.Unix(unix, 0).Format("2006-01-02 15:04")
 }
 
-func printEntry(entry asyncio.DirEntry, long, human bool) {
+func printEntry(entry message.DirEntry, long, human bool) {
 	name := entry.Name
 	if entry.IsDir {
 		name += "/"
@@ -88,7 +88,7 @@ var lsCmd = &cli.Command{
 		if err != nil {
 			return err
 		}
-		statRes := res.msg.(*asyncio.StatRes)
+		statRes := res.msg.(*message.StatRes)
 		if !statRes.Success {
 			return fmt.Errorf("stat failed for %s: %s", path, statRes.Error)
 		}
@@ -98,7 +98,7 @@ var lsCmd = &cli.Command{
 			if err != nil {
 				return err
 			}
-			dirRes := res.msg.(*asyncio.ReadDirRes)
+			dirRes := res.msg.(*message.ReadDirRes)
 			if !dirRes.Success {
 				return fmt.Errorf("readdir failed for %s: %s", path, dirRes.Error)
 			}
@@ -111,7 +111,7 @@ var lsCmd = &cli.Command{
 				printEntry(entry, long, human)
 			}
 		} else {
-			printEntry(asyncio.DirEntry{
+			printEntry(message.DirEntry{
 				Name:  path,
 				IsDir: false,
 				Mode:  statRes.Mode,

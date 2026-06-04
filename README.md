@@ -96,7 +96,7 @@ When copying multiple sources, the destination is treated as a directory.
 
 ## Protocol safety limits
 
-The asyncio protocol reads `msgSize` and `payloadSize` from the wire header. Two limits in `asyncio/message.go` prevent abuse:
+The asyncio protocol reads `msgSize` and `payloadSize` from the wire header. Two limits in `message/message.go` prevent abuse:
 
 - **`MaxMsgSize` = 64 KB** — CBOR-encoded messages are tiny structs (ID, ints, path string). 64 KB is several orders of magnitude above any legitimate message, but far below anything dangerous.
 - **`MaxPayloadSize` = 16 MB** — File chunks default to 32 KB (`--chunk`). 16 MB allows very large chunks while still being small enough that a single allocation won't OOM the process. 64 concurrent 16 MB allocations would be needed to hit 1 GB.
@@ -106,7 +106,7 @@ Without these two bounds a malicious or corrupted header could set `msgSize = 0x
 ## Architecture
 
 - `cmd/asyncio/` — primary CLI entrypoint and copy logic
-- `asyncio/` — shared protocol library (message types, CBOR encode/decode, wire format)
+- `message/` — shared protocol library (message types, CBOR encode/decode, wire format)
 - `logger/` — zerolog wrapped as `slog.Logger`
 - `cmd/progressbar/` — real-time progress display using `go-humanize`
 ### Message types

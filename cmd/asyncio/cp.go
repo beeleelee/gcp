@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beeleelee/gcp/asyncio"
+	"github.com/beeleelee/gcp/message"
 	"github.com/beeleelee/gcp/logger"
 	"github.com/urfave/cli/v2"
 )
@@ -31,7 +31,7 @@ func isRemoteDir(ctx context.Context, cc *copierClient, path string) (bool, erro
 	if err != nil {
 		return false, err
 	}
-	statRes := res.msg.(*asyncio.StatRes)
+	statRes := res.msg.(*message.StatRes)
 	if !statRes.Success {
 		return false, fmt.Errorf("stat failed for %s: %s", path, statRes.Error)
 	}
@@ -43,9 +43,9 @@ func isRemoteDir(ctx context.Context, cc *copierClient, path string) (bool, erro
 func parseCompressionFlag(s string) uint8 {
 	switch s {
 	case "gzip":
-		return asyncio.CompressionGzip
+		return message.CompressionGzip
 	default:
-		return asyncio.CompressionNone
+		return message.CompressionNone
 	}
 }
 

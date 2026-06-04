@@ -10,7 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/beeleelee/gcp/asyncio"
+	"github.com/beeleelee/gcp/message"
 	"github.com/beeleelee/gcp/logger"
 	"github.com/panjf2000/gnet/v2"
 	"github.com/urfave/cli/v2"
@@ -19,7 +19,7 @@ import (
 // wrappedMsg pairs a decoded protocol message with the connection it arrived
 // on, so that worker goroutines can send responses back through the same conn.
 type wrappedMsg struct {
-	msg     asyncio.MSG
+	msg     message.MSG
 	payload []byte
 	conn    gnet.Conn
 }
@@ -72,9 +72,9 @@ func (c *copierServer) OnBoot(eng gnet.Engine) gnet.Action {
 // to wait for more data — gnet handles buffering internally.
 func (c *copierServer) OnTraffic(conn gnet.Conn) gnet.Action {
 	for {
-		msg, payload, err := asyncio.ReadMessage(conn)
+		msg, payload, err := message.ReadMessage(conn)
 		if err != nil {
-			if err == asyncio.ErrIncompletePacket {
+			if err == message.ErrIncompletePacket {
 				return gnet.None
 			}
 			return gnet.Close
@@ -98,8 +98,8 @@ func (c *copierServer) process() {
 					msgt := wmsg.msg.Type()
 
 					// Auth messages bypass the auth check.
-					if msgt == asyncio.AuthReqT {
-						c.handleAuth(wmsg.conn, wmsg.msg.(*asyncio.AuthReq))
+					if msgt == message.AuthReqT {
+						c.handleAuth(wmsg.conn, wmsg.msg.(*message.AuthReq))
 						continue
 					}
 
@@ -112,35 +112,35 @@ func (c *copierServer) process() {
 					}
 
 					switch msgt {
-					case asyncio.CreateReqT:
-						msg, _ := wmsg.msg.(*asyncio.CreateReq)
+					case message.CreateReqT:
+						msg, _ := wmsg.msg.(*message.CreateReq)
 						c.create(wmsg.conn, msg, ca)
-					case asyncio.CreateResT:
+					case message.CreateResT:
 						// unreachable
-					case asyncio.WriteReqT:
-						msg, _ := wmsg.msg.(*asyncio.WriteReq)
+					case message.WriteReqT:
+						msg, _ := wmsg.msg.(*message.WriteReq)
 						c.write(wmsg.conn, msg, wmsg.payload, ca)
-					case asyncio.WriteResT:
+					case message.WriteResT:
 						// unreachable
-					case asyncio.ReadReqT:
-						msg, _ := wmsg.msg.(*asyncio.ReadReq)
+					case message.ReadReqT:
+						msg, _ := wmsg.msg.(*message.ReadReq)
 						c.read(wmsg.conn, msg, ca)
-					case asyncio.ReadResT:
+					case message.ReadResT:
 						// unreachable
-					case asyncio.StatReqT:
-						msg, _ := wmsg.msg.(*asyncio.StatReq)
+					case message.StatReqT:
+						msg, _ := wmsg.msg.(*message.StatReq)
 						c.stat(wmsg.conn, msg, ca)
-					case asyncio.StatResT:
+					case message.StatResT:
 						// unreachable
-					case asyncio.ReadDirReqT:
-						msg, _ := wmsg.msg.(*asyncio.ReadDirReq)
+					case message.ReadDirReqT:
+						msg, _ := wmsg.msg.(*message.ReadDirReq)
 						c.readDir(wmsg.conn, msg, ca)
-					case asyncio.ReadDirResT:
+					case message.ReadDirResT:
 						// unreachable
-					case asyncio.HashReqT:
-						msg, _ := wmsg.msg.(*asyncio.HashReq)
+					case message.HashReqT:
+						msg, _ := wmsg.msg.(*message.HashReq)
 						c.hash(wmsg.conn, msg, ca)
-					case asyncio.HashResT:
+					case message.HashResT:
 						// unreachable
 					default:
 						logger.Log.Error("should not be here, unrecognized message type", "wmsg", wmsg)
@@ -172,9 +172,9 @@ func setConnAuth(conn gnet.Conn, ca *connAuth) {
 
 // rejectUnauthenticated sends an AuthRes error for non-auth messages received
 // on an unauthenticated connection, then closes the connection.
-func (c *copierServer) rejectUnauthenticated(conn gnet.Conn, msgt asyncio.MessageType, id int64) {
+func (c *copierServer) rejectUnauthenticated(conn gnet.Conn, msgt message.MessageType, id int64) {
 	errMsg := fmt.Sprintf("authentication required before type %d", msgt)
-	asyncio.WriteMessage(conn, &asyncio.AuthRes{
+	message.WriteMessage(conn, &message.AuthRes{
 		ID:      id,
 		Success: false,
 		Error:   errMsg,
@@ -184,14 +184,14 @@ func (c *copierServer) rejectUnauthenticated(conn gnet.Conn, msgt asyncio.Messag
 
 // handleAuth processes an AuthReq, implementing the two-phase challenge-
 // response protocol and token-based fast re-auth.
-func (c *copierServer) handleAuth(conn gnet.Conn, req *asyncio.AuthReq) {
+func (c *copierServer) handleAuth(conn gnet.Conn, req *message.AuthReq) {
 	// Phase 2 (or token auth): signature or token provided.
 	if len(req.Signature) > 0 || req.Token != "" {
 		// Token auth: fast path for reconnecting connections.
 		if req.Token != "" {
 			info := c.sessions.Get(req.Token)
 			if info == nil {
-				asyncio.WriteMessage(conn, &asyncio.AuthRes{
+				message.WriteMessage(conn, &message.AuthRes{
 					ID:      req.ID,
 					Success: false,
 					Error:   "invalid or expired session token",
@@ -205,7 +205,7 @@ func (c *copierServer) handleAuth(conn gnet.Conn, req *asyncio.AuthReq) {
 				home:           info.Home,
 				encryptionKey: info.EncryptionKey,
 			})
-			asyncio.WriteMessage(conn, &asyncio.AuthRes{
+			message.WriteMessage(conn, &message.AuthRes{
 				ID:      req.ID,
 				Success: true,
 				User:    info.User,
@@ -216,7 +216,7 @@ func (c *copierServer) handleAuth(conn gnet.Conn, req *asyncio.AuthReq) {
 		// Signature provided — complete the challenge-response.
 		ca := getConnAuth(conn)
 		if ca == nil || ca.state != authPending || ca.challenge == nil {
-			asyncio.WriteMessage(conn, &asyncio.AuthRes{
+			message.WriteMessage(conn, &message.AuthRes{
 				ID:      req.ID,
 				Success: false,
 				Error:   "no pending challenge",
@@ -227,7 +227,7 @@ func (c *copierServer) handleAuth(conn gnet.Conn, req *asyncio.AuthReq) {
 
 		pubKey, err := verifySSHSignature(req.PubKey, ca.challenge, req.Signature)
 		if err != nil {
-			asyncio.WriteMessage(conn, &asyncio.AuthRes{
+			message.WriteMessage(conn, &message.AuthRes{
 				ID:      req.ID,
 				Success: false,
 				Error:   fmt.Sprintf("signature verification failed: %v", err),
@@ -238,7 +238,7 @@ func (c *copierServer) handleAuth(conn gnet.Conn, req *asyncio.AuthReq) {
 
 		user, home, err := findUserByPubKey(pubKey, req.User)
 		if err != nil {
-			asyncio.WriteMessage(conn, &asyncio.AuthRes{
+			message.WriteMessage(conn, &message.AuthRes{
 				ID:      req.ID,
 				Success: false,
 				Error:   err.Error(),
@@ -256,7 +256,7 @@ func (c *copierServer) handleAuth(conn gnet.Conn, req *asyncio.AuthReq) {
 			encryptionKey: info.EncryptionKey,
 		})
 
-		asyncio.WriteMessage(conn, &asyncio.AuthRes{
+		message.WriteMessage(conn, &message.AuthRes{
 			ID:      req.ID,
 			Success: true,
 			Token:   token,
@@ -267,7 +267,7 @@ func (c *copierServer) handleAuth(conn gnet.Conn, req *asyncio.AuthReq) {
 
 	// Phase 1: client sent PubKey without Signature — issue a challenge.
 	if len(req.PubKey) == 0 {
-		asyncio.WriteMessage(conn, &asyncio.AuthRes{
+		message.WriteMessage(conn, &message.AuthRes{
 			ID:      req.ID,
 			Success: false,
 			Error:   "missing public key",
@@ -278,7 +278,7 @@ func (c *copierServer) handleAuth(conn gnet.Conn, req *asyncio.AuthReq) {
 
 	challenge, err := generateChallenge()
 	if err != nil {
-		asyncio.WriteMessage(conn, &asyncio.AuthRes{
+		message.WriteMessage(conn, &message.AuthRes{
 			ID:      req.ID,
 			Success: false,
 			Error:   "internal error",
@@ -293,7 +293,7 @@ func (c *copierServer) handleAuth(conn gnet.Conn, req *asyncio.AuthReq) {
 		pubKey:    req.PubKey,
 	})
 
-	asyncio.WriteMessage(conn, &asyncio.AuthRes{
+	message.WriteMessage(conn, &message.AuthRes{
 		ID:        req.ID,
 		Success:   false,
 		Challenge: challenge,
@@ -310,7 +310,7 @@ func sandboxPath(ca *connAuth, reqPath string) (string, error) {
 }
 
 // create handles a CreateReq from the client.
-func (c *copierServer) create(conn gnet.Conn, req *asyncio.CreateReq, ca *connAuth) {
+func (c *copierServer) create(conn gnet.Conn, req *message.CreateReq, ca *connAuth) {
 	spath, err := sandboxPath(ca, req.Path)
 	if err != nil {
 		c.createFailed(conn, req, err)
@@ -361,32 +361,32 @@ func (c *copierServer) create(conn gnet.Conn, req *asyncio.CreateReq, ca *connAu
 	c.createSuccess(conn, req)
 }
 
-func (c *copierServer) createFailed(conn gnet.Conn, req *asyncio.CreateReq, err error) {
+func (c *copierServer) createFailed(conn gnet.Conn, req *message.CreateReq, err error) {
 	errMsg := ""
 	if err != nil {
 		errMsg = err.Error()
 	}
-	asyncio.WriteMessage(conn, &asyncio.CreateRes{
+	message.WriteMessage(conn, &message.CreateRes{
 		ID:      req.ID,
 		Success: false,
 		Error:   errMsg,
 	}, nil)
 }
 
-func (c *copierServer) createSuccess(conn gnet.Conn, req *asyncio.CreateReq) {
-	asyncio.WriteMessage(conn, &asyncio.CreateRes{
+func (c *copierServer) createSuccess(conn gnet.Conn, req *message.CreateReq) {
+	message.WriteMessage(conn, &message.CreateRes{
 		ID:      req.ID,
 		Success: true,
 	}, nil)
 }
 
-func (c *copierServer) write(conn gnet.Conn, req *asyncio.WriteReq, payload []byte, ca *connAuth) {
+func (c *copierServer) write(conn gnet.Conn, req *message.WriteReq, payload []byte, ca *connAuth) {
 	if req.Checksum != 0 && crc32.ChecksumIEEE(payload) != req.Checksum {
 		c.writeFailed(conn, req, fmt.Errorf("checksum mismatch"))
 		return
 	}
 
-	if req.Encryption != asyncio.EncryptionSecretBox {
+	if req.Encryption != message.EncryptionSecretBox {
 		c.writeFailed(conn, req, fmt.Errorf("unencrypted payload rejected"))
 		return
 	}
@@ -423,20 +423,20 @@ func (c *copierServer) write(conn gnet.Conn, req *asyncio.WriteReq, payload []by
 	c.writeSuccess(conn, req, n)
 }
 
-func (c *copierServer) writeFailed(conn gnet.Conn, req *asyncio.WriteReq, err error) {
+func (c *copierServer) writeFailed(conn gnet.Conn, req *message.WriteReq, err error) {
 	errMsg := ""
 	if err != nil {
 		errMsg = err.Error()
 	}
-	asyncio.WriteMessage(conn, &asyncio.WriteRes{
+	message.WriteMessage(conn, &message.WriteRes{
 		ID:      req.ID,
 		Success: false,
 		Error:   errMsg,
 	}, nil)
 }
 
-func (c *copierServer) read(conn gnet.Conn, req *asyncio.ReadReq, ca *connAuth) {
-	if req.Encryption != asyncio.EncryptionSecretBox {
+func (c *copierServer) read(conn gnet.Conn, req *message.ReadReq, ca *connAuth) {
+	if req.Encryption != message.EncryptionSecretBox {
 		c.readFailed(conn, req, fmt.Errorf("unencrypted request rejected"))
 		return
 	}
@@ -480,24 +480,24 @@ func (c *copierServer) read(conn gnet.Conn, req *asyncio.ReadReq, ca *connAuth) 
 		return
 	}
 
-	c.readSuccess(conn, req, encrypted, algo, asyncio.EncryptionSecretBox, info.Size())
+	c.readSuccess(conn, req, encrypted, algo, message.EncryptionSecretBox, info.Size())
 }
 
-func (c *copierServer) readFailed(conn gnet.Conn, req *asyncio.ReadReq, err error) {
+func (c *copierServer) readFailed(conn gnet.Conn, req *message.ReadReq, err error) {
 	errMsg := ""
 	if err != nil {
 		errMsg = err.Error()
 	}
-	asyncio.WriteMessage(conn, &asyncio.ReadRes{
+	message.WriteMessage(conn, &message.ReadRes{
 		ID:      req.ID,
 		Success: false,
 		Error:   errMsg,
 	}, nil)
 }
 
-func (c *copierServer) readSuccess(conn gnet.Conn, req *asyncio.ReadReq, data []byte, compressionAlgo, encryptionAlgo uint8, fileSize int64) {
+func (c *copierServer) readSuccess(conn gnet.Conn, req *message.ReadReq, data []byte, compressionAlgo, encryptionAlgo uint8, fileSize int64) {
 	checksum := crc32.ChecksumIEEE(data)
-	asyncio.WriteMessage(conn, &asyncio.ReadRes{
+	message.WriteMessage(conn, &message.ReadRes{
 		ID:          req.ID,
 		Success:     true,
 		N:           int64(len(data)),
@@ -507,7 +507,7 @@ func (c *copierServer) readSuccess(conn gnet.Conn, req *asyncio.ReadReq, data []
 	}, data)
 }
 
-func (c *copierServer) readDir(conn gnet.Conn, req *asyncio.ReadDirReq, ca *connAuth) {
+func (c *copierServer) readDir(conn gnet.Conn, req *message.ReadDirReq, ca *connAuth) {
 	spath, err := sandboxPath(ca, req.Path)
 	if err != nil {
 		c.readDirFailed(conn, req, err)
@@ -522,33 +522,33 @@ func (c *copierServer) readDir(conn gnet.Conn, req *asyncio.ReadDirReq, ca *conn
 	c.readDirSuccess(conn, req, entries)
 }
 
-func (c *copierServer) readDirFailed(conn gnet.Conn, req *asyncio.ReadDirReq, err error) {
+func (c *copierServer) readDirFailed(conn gnet.Conn, req *message.ReadDirReq, err error) {
 	errMsg := ""
 	if err != nil {
 		errMsg = err.Error()
 	}
-	asyncio.WriteMessage(conn, &asyncio.ReadDirRes{
+	message.WriteMessage(conn, &message.ReadDirRes{
 		ID:      req.ID,
 		Success: false,
 		Error:   errMsg,
 	}, nil)
 }
 
-func (c *copierServer) readDirSuccess(conn gnet.Conn, req *asyncio.ReadDirReq, entries []os.DirEntry) {
-	res := &asyncio.ReadDirRes{
+func (c *copierServer) readDirSuccess(conn gnet.Conn, req *message.ReadDirReq, entries []os.DirEntry) {
+	res := &message.ReadDirRes{
 		ID:      req.ID,
 		Success: true,
-		Entries: make([]asyncio.DirEntry, len(entries)),
+		Entries: make([]message.DirEntry, len(entries)),
 	}
 	for i, e := range entries {
 		info, infoErr := e.Info()
 		if infoErr != nil {
-			res.Entries[i] = asyncio.DirEntry{
+			res.Entries[i] = message.DirEntry{
 				Name:  e.Name(),
 				IsDir: e.IsDir(),
 			}
 		} else {
-			res.Entries[i] = asyncio.DirEntry{
+			res.Entries[i] = message.DirEntry{
 				Name:    e.Name(),
 				IsDir:   e.IsDir(),
 				Mode:    uint32(info.Mode()),
@@ -557,10 +557,10 @@ func (c *copierServer) readDirSuccess(conn gnet.Conn, req *asyncio.ReadDirReq, e
 			}
 		}
 	}
-	asyncio.WriteMessage(conn, res, nil)
+	message.WriteMessage(conn, res, nil)
 }
 
-func (c *copierServer) stat(conn gnet.Conn, req *asyncio.StatReq, ca *connAuth) {
+func (c *copierServer) stat(conn gnet.Conn, req *message.StatReq, ca *connAuth) {
 	spath, err := sandboxPath(ca, req.Path)
 	if err != nil {
 		c.statFailed(conn, req, err)
@@ -575,20 +575,20 @@ func (c *copierServer) stat(conn gnet.Conn, req *asyncio.StatReq, ca *connAuth) 
 	c.statSuccess(conn, req, info)
 }
 
-func (c *copierServer) statFailed(conn gnet.Conn, req *asyncio.StatReq, err error) {
+func (c *copierServer) statFailed(conn gnet.Conn, req *message.StatReq, err error) {
 	errMsg := ""
 	if err != nil {
 		errMsg = err.Error()
 	}
-	asyncio.WriteMessage(conn, &asyncio.StatRes{
+	message.WriteMessage(conn, &message.StatRes{
 		ID:      req.ID,
 		Success: false,
 		Error:   errMsg,
 	}, nil)
 }
 
-func (c *copierServer) statSuccess(conn gnet.Conn, req *asyncio.StatReq, info os.FileInfo) {
-	asyncio.WriteMessage(conn, &asyncio.StatRes{
+func (c *copierServer) statSuccess(conn gnet.Conn, req *message.StatReq, info os.FileInfo) {
+	message.WriteMessage(conn, &message.StatRes{
 		ID:      req.ID,
 		Success: true,
 		Size:    info.Size(),
@@ -597,15 +597,15 @@ func (c *copierServer) statSuccess(conn gnet.Conn, req *asyncio.StatReq, info os
 	}, nil)
 }
 
-func (c *copierServer) writeSuccess(conn gnet.Conn, req *asyncio.WriteReq, n int) {
-	asyncio.WriteMessage(conn, &asyncio.WriteRes{
+func (c *copierServer) writeSuccess(conn gnet.Conn, req *message.WriteReq, n int) {
+	message.WriteMessage(conn, &message.WriteRes{
 		ID:      req.ID,
 		Success: true,
 		N:       int32(n),
 	}, nil)
 }
 
-func (c *copierServer) hash(conn gnet.Conn, req *asyncio.HashReq, ca *connAuth) {
+func (c *copierServer) hash(conn gnet.Conn, req *message.HashReq, ca *connAuth) {
 	spath, err := sandboxPath(ca, req.Path)
 	if err != nil {
 		c.hashFailed(conn, req, err)
@@ -625,19 +625,19 @@ func (c *copierServer) hash(conn gnet.Conn, req *asyncio.HashReq, ca *connAuth) 
 		return
 	}
 
-	asyncio.WriteMessage(conn, &asyncio.HashRes{
+	message.WriteMessage(conn, &message.HashRes{
 		ID:      req.ID,
 		Success: true,
 		Hash:    h.Sum(nil),
 	}, nil)
 }
 
-func (c *copierServer) hashFailed(conn gnet.Conn, req *asyncio.HashReq, err error) {
+func (c *copierServer) hashFailed(conn gnet.Conn, req *message.HashReq, err error) {
 	errMsg := ""
 	if err != nil {
 		errMsg = err.Error()
 	}
-	asyncio.WriteMessage(conn, &asyncio.HashRes{
+	message.WriteMessage(conn, &message.HashRes{
 		ID:      req.ID,
 		Success: false,
 		Error:   errMsg,
