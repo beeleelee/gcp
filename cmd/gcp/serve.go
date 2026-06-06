@@ -9,6 +9,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
+	"time"
 
 	"github.com/beeleelee/gcp/message"
 	"github.com/beeleelee/gcp/logger"
@@ -44,6 +46,120 @@ type connAuth struct {
 	encryptionKey *[32]byte
 }
 
+// fdEntry holds an open file descriptor and its metadata for the fdCache.
+type fdEntry struct {
+	file       *os.File
+	writable   bool
+	lastAccess time.Time
+}
+
+// fdCache caches open file descriptors keyed by sandboxed path, avoiding
+// repeated open/close syscalls per chunk. Idle entries are evicted by a
+// background sweep goroutine.
+type fdCache struct {
+	mu          sync.Mutex
+	idleTimeout time.Duration
+	files       map[string]*fdEntry
+	stopCh      chan struct{}
+	wg          sync.WaitGroup
+}
+
+func newFDCache(idleTimeout time.Duration) *fdCache {
+	fc := &fdCache{
+		idleTimeout: idleTimeout,
+		files:       make(map[string]*fdEntry),
+		stopCh:      make(chan struct{}),
+	}
+	if idleTimeout > 0 {
+		fc.wg.Add(1)
+		go fc.sweepLoop()
+	}
+	return fc
+}
+
+// get returns a cached file descriptor for path, or opens a new one.
+// If writable is true and the cached fd is read-only, it is upgraded.
+func (fc *fdCache) get(path string, writable bool) (*os.File, error) {
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+
+	if e, ok := fc.files[path]; ok {
+		if writable && !e.writable {
+			e.file.Close()
+			f, err := os.OpenFile(path, os.O_RDWR, 0644)
+			if err != nil {
+				delete(fc.files, path)
+				return nil, err
+			}
+			e.file = f
+			e.writable = true
+		}
+		e.lastAccess = time.Now()
+		return e.file, nil
+	}
+
+	flags := os.O_RDONLY
+	if writable {
+		flags = os.O_RDWR
+	}
+	f, err := os.OpenFile(path, flags, 0644)
+	if err != nil {
+		return nil, err
+	}
+	fc.files[path] = &fdEntry{
+		file:       f,
+		writable:   writable,
+		lastAccess: time.Now(),
+	}
+	return f, nil
+}
+
+// evict removes path from the cache and closes its fd.
+func (fc *fdCache) evict(path string) {
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+	if e, ok := fc.files[path]; ok {
+		e.file.Close()
+		delete(fc.files, path)
+	}
+}
+
+// close stops the sweep goroutine and closes all cached fds.
+func (fc *fdCache) close() {
+	close(fc.stopCh)
+	fc.wg.Wait()
+
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+	for _, e := range fc.files {
+		e.file.Close()
+	}
+	fc.files = make(map[string]*fdEntry)
+}
+
+// sweepLoop runs in a background goroutine, periodically evicting entries
+// that have been idle longer than idleTimeout.
+func (fc *fdCache) sweepLoop() {
+	defer fc.wg.Done()
+	ticker := time.NewTicker(fc.idleTimeout)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-fc.stopCh:
+			return
+		case now := <-ticker.C:
+			fc.mu.Lock()
+			for path, e := range fc.files {
+				if now.Sub(e.lastAccess) > fc.idleTimeout {
+					e.file.Close()
+					delete(fc.files, path)
+				}
+			}
+			fc.mu.Unlock()
+		}
+	}
+}
+
 // copierServer implements the gnet event-loop server. It receives gcp protocol
 // messages from many connections and dispatches them to a pool of worker
 // goroutines that perform actual file I/O.
@@ -59,6 +175,7 @@ type copierServer struct {
 	processMsgChan chan *wrappedMsg
 	processNum     int
 	sessions       *sessionStore
+	fdCache        *fdCache
 }
 
 func (c *copierServer) OnBoot(eng gnet.Engine) gnet.Action {
@@ -409,14 +526,14 @@ func (c *copierServer) write(conn gnet.Conn, req *message.WriteReq, payload []by
 		return
 	}
 
-	fd, err := os.OpenFile(spath, os.O_RDWR, 0644)
+	fd, err := c.fdCache.get(spath, true)
 	if err != nil {
 		c.writeFailed(conn, req, err)
 		return
 	}
-	defer fd.Close()
 	n, err := fd.WriteAt(data, req.Offset)
 	if err != nil {
+		c.fdCache.evict(spath)
 		c.writeFailed(conn, req, err)
 		return
 	}
@@ -447,12 +564,11 @@ func (c *copierServer) read(conn gnet.Conn, req *message.ReadReq, ca *connAuth) 
 		return
 	}
 
-	fd, err := os.Open(spath)
+	fd, err := c.fdCache.get(spath, false)
 	if err != nil {
 		c.readFailed(conn, req, err)
 		return
 	}
-	defer fd.Close()
 
 	info, err := fd.Stat()
 	if err != nil {
@@ -612,12 +728,18 @@ func (c *copierServer) hash(conn gnet.Conn, req *message.HashReq, ca *connAuth) 
 		return
 	}
 
-	fd, err := os.Open(spath)
+	defer c.fdCache.evict(spath)
+
+	fd, err := c.fdCache.get(spath, false)
 	if err != nil {
 		c.hashFailed(conn, req, err)
 		return
 	}
-	defer fd.Close()
+
+	if _, err := fd.Seek(0, io.SeekStart); err != nil {
+		c.hashFailed(conn, req, err)
+		return
+	}
 
 	h := sha256.New()
 	if _, err := io.Copy(h, fd); err != nil {
@@ -650,6 +772,7 @@ func newServer(ctx context.Context, processNum int) *copierServer {
 		ctx:            ctx,
 		processNum:     processNum,
 		sessions:       newSessionStore(),
+		fdCache:        newFDCache(30 * time.Second),
 	}
 	cs.process()
 	return cs
@@ -683,6 +806,7 @@ var serveCmd = &cli.Command{
 		go func() {
 			<-c.Context.Done()
 			logger.Log.Info("shutting down gracefully...")
+			srv.fdCache.close()
 			srv.eng.Stop(c.Context)
 		}()
 
