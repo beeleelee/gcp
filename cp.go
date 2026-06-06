@@ -217,7 +217,7 @@ var cpCmd = &cli.Command{
 		},
 		&cli.BoolFlag{
 			Name:  "checksum",
-			Value: true,
+			Value: false,
 			Usage: "enable CRC-32 chunk checksums",
 		},
 		&cli.BoolFlag{
