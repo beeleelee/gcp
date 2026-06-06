@@ -248,6 +248,11 @@ var cpCmd = &cli.Command{
 			Usage: "SSH identity file (overrides SSH config IdentityFile)",
 		},
 		&cli.BoolFlag{
+			Name:  "encrypt",
+			Value: true,
+			Usage: "enable XSalsa20-Poly1305 chunk encryption",
+		},
+		&cli.BoolFlag{
 			Name:  "quiet",
 			Usage: "suppress progress bar",
 		},
@@ -326,7 +331,7 @@ var cpCmd = &cli.Command{
 		if c.String("identity-file") != "" {
 			identityFile = c.String("identity-file")
 		}
-		cc, err := newClient(ctx, hostPort, user, identityFile, c.Int("batch"), c.Duration("timeout"), c.Bool("checksum"))
+		cc, err := newClient(ctx, hostPort, user, identityFile, c.Int("batch"), c.Duration("timeout"), c.Bool("checksum"), c.Bool("encrypt"))
 		if err != nil {
 			return fmt.Errorf("connect to %s: %w", hostPort, err)
 		}

@@ -510,18 +510,19 @@ func (c *copierServer) write(conn gnet.Conn, req *message.WriteReq, payload []by
 		return
 	}
 
-	if req.Encryption != message.EncryptionSecretBox {
-		c.writeFailed(conn, req, fmt.Errorf("unencrypted payload rejected"))
-		return
+	var chunk []byte
+	if req.Encryption == message.EncryptionSecretBox {
+		decrypted, err := decryptChunk(payload, ca.encryptionKey)
+		if err != nil {
+			c.writeFailed(conn, req, fmt.Errorf("decrypt: %w", err))
+			return
+		}
+		chunk = decrypted
+	} else {
+		chunk = payload
 	}
 
-	decrypted, err := decryptChunk(payload, ca.encryptionKey)
-	if err != nil {
-		c.writeFailed(conn, req, fmt.Errorf("decrypt: %w", err))
-		return
-	}
-
-	data, err := decompressChunk(decrypted, req.Compression)
+	data, err := decompressChunk(chunk, req.Compression)
 	if err != nil {
 		c.writeFailed(conn, req, err)
 		return
@@ -560,11 +561,6 @@ func (c *copierServer) writeFailed(conn gnet.Conn, req *message.WriteReq, err er
 }
 
 func (c *copierServer) read(conn gnet.Conn, req *message.ReadReq, ca *connAuth) {
-	if req.Encryption != message.EncryptionSecretBox {
-		c.readFailed(conn, req, fmt.Errorf("unencrypted request rejected"))
-		return
-	}
-
 	spath, err := sandboxPath(ca, req.Path)
 	if err != nil {
 		c.readFailed(conn, req, err)
@@ -597,13 +593,24 @@ func (c *copierServer) read(conn gnet.Conn, req *message.ReadReq, ca *connAuth) 
 		return
 	}
 
-	encrypted, err := encryptChunk(compressed, ca.encryptionKey)
-	if err != nil {
-		c.readFailed(conn, req, fmt.Errorf("encrypt: %w", err))
-		return
+	var (
+		toSend   []byte
+		encAlgo  uint8
+	)
+	if req.Encryption == message.EncryptionSecretBox {
+		encrypted, err := encryptChunk(compressed, ca.encryptionKey)
+		if err != nil {
+			c.readFailed(conn, req, fmt.Errorf("encrypt: %w", err))
+			return
+		}
+		toSend = encrypted
+		encAlgo = message.EncryptionSecretBox
+	} else {
+		toSend = compressed
+		encAlgo = message.EncryptionNone
 	}
 
-	c.readSuccess(conn, req, encrypted, algo, message.EncryptionSecretBox, info.Size())
+	c.readSuccess(conn, req, toSend, algo, encAlgo, info.Size())
 }
 
 func (c *copierServer) readFailed(conn gnet.Conn, req *message.ReadReq, err error) {

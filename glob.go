@@ -80,7 +80,7 @@ func expandRemoteSources(
 		parent = "/"
 	}
 
-	cc, err := newClient(ctx, hostPort, user, "", 1, timeout, useChecksum)
+	cc, err := newClient(ctx, hostPort, user, "", 1, timeout, useChecksum, true)
 	if err != nil {
 		return nil, err
 	}

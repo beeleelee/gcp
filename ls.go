@@ -78,7 +78,7 @@ var lsCmd = &cli.Command{
 		long := c.Bool("long")
 		human := c.Bool("human-readable")
 
-		cc, err := newClient(c.Context, hostPort, user, identityFile, 1, 0, false)
+		cc, err := newClient(c.Context, hostPort, user, identityFile, 1, 0, false, false)
 		if err != nil {
 			return err
 		}

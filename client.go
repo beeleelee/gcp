@@ -55,6 +55,7 @@ type copierClient struct {
 	batch         int
 	timeout       time.Duration
 	useChecksum   bool
+	useEncryption bool
 	authToken     string
 	authUser      string
 	identityFile  string
@@ -64,13 +65,14 @@ type copierClient struct {
 	receiveHandle chan clientWrappedMsg
 }
 
-func newClient(ctx context.Context, target, user, identityFile string, batch int, timeout time.Duration, useChecksum bool) (*copierClient, error) {
+func newClient(ctx context.Context, target, user, identityFile string, batch int, timeout time.Duration, useChecksum bool, useEncryption bool) (*copierClient, error) {
 	cc := &copierClient{
 		ctx:           ctx,
 		target:        target,
 		batch:         batch,
 		timeout:       timeout,
 		useChecksum:   useChecksum,
+		useEncryption: useEncryption,
 		authUser:      user,
 		identityFile:  identityFile,
 		msgIn:         make(chan clientRequestMsg),
@@ -451,14 +453,20 @@ func (cc *copierClient) Write(target string, off int64, payload []byte, compress
 		return clientWrappedMsg{}, err
 	}
 
-	encrypted, err := encryptChunk(compressed, cc.encryptionKey)
-	if err != nil {
-		return clientWrappedMsg{}, err
-	}
-
-	var encAlgo uint8 = message.EncryptionNone
-	if cc.encryptionKey != nil {
+	var (
+		toSend  []byte
+		encAlgo uint8
+	)
+	if cc.useEncryption {
+		encrypted, err := encryptChunk(compressed, cc.encryptionKey)
+		if err != nil {
+			return clientWrappedMsg{}, err
+		}
+		toSend = encrypted
 		encAlgo = message.EncryptionSecretBox
+	} else {
+		toSend = compressed
+		encAlgo = message.EncryptionNone
 	}
 
 	req := &message.WriteReq{
@@ -468,13 +476,13 @@ func (cc *copierClient) Write(target string, off int64, payload []byte, compress
 		Compression: algo,
 		Encryption:  encAlgo,
 	}
-	if cc.useChecksum && len(encrypted) > 0 {
-		req.Checksum = crc32.ChecksumIEEE(encrypted)
+	if cc.useChecksum && len(toSend) > 0 {
+		req.Checksum = crc32.ChecksumIEEE(toSend)
 	}
 	cc.msgIn <- clientRequestMsg{
 		clientWrappedMsg: clientWrappedMsg{
 			msg:     req,
-			payload: encrypted,
+			payload: toSend,
 		},
 		resChan: ch,
 	}
@@ -489,7 +497,7 @@ func (cc *copierClient) Write(target string, off int64, payload []byte, compress
 func (cc *copierClient) Read(target string, off int64, size int64, compressionAlgo uint8) (clientWrappedMsg, error) {
 	ch := make(chan clientWrappedMsg)
 	var encAlgo uint8 = message.EncryptionNone
-	if cc.encryptionKey != nil {
+	if cc.useEncryption {
 		encAlgo = message.EncryptionSecretBox
 	}
 	cc.msgIn <- clientRequestMsg{
