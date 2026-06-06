@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/beeleelee/gcp/message"
-	"github.com/beeleelee/gcp/cmd/progressbar"
+	"github.com/beeleelee/gcp/progressbar"
 	"github.com/beeleelee/gcp/logger"
 	"golang.org/x/crypto/nacl/secretbox"
 )
