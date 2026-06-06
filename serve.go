@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -422,6 +423,9 @@ func (c *copierServer) handleAuth(conn gnet.Conn, req *message.AuthReq) {
 func sandboxPath(ca *connAuth, reqPath string) (string, error) {
 	if ca == nil {
 		return "", fmt.Errorf("not authenticated")
+	}
+	if strings.HasPrefix(reqPath, "~/") {
+		return filepath.Join(ca.home, reqPath[2:]), nil
 	}
 	if filepath.IsAbs(reqPath) {
 		return filepath.Clean(reqPath), nil
