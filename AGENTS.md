@@ -6,7 +6,7 @@ Copy files between local and hosts.
 
 | make target | source dir     | output binary | transport         |
 |-------------|----------------|---------------|-------------------|
-| `gcp`       | `cmd/gcp/` | `./bin/gcp`   | custom TCP + CBOR |
+| `gcp`       | `.`        | `./bin/gcp`   | custom TCP + CBOR |
 
 The asyncio variant defaults to port `5031`.
 
@@ -16,7 +16,7 @@ The asyncio variant defaults to port `5031`.
 make gcp        # builds asyncio binary with -ldflags="-s -w"
 ```
 
-No CI or linter config. Tests live in `message/`, `logger/`, `cmd/progressbar/`.
+No CI or linter config. Tests live in `message/`, `logger/`, `progressbar/`.
 ```
 go test -count=1 ./...        # all tests
 go test -race -count=1 ./...  # with race detector
@@ -62,15 +62,15 @@ Log level: `--level` or `-L` flag (`error` default, accepts `info`, `debug`, etc
 
 ## Architecture notes
 
-- `cmd/gcp/` is the primary/main CLI entrypoint. The module root is **not** a `main` package.
+- The project root (`.`) is the primary/main CLI entrypoint (`package main`).
 - Asyncio uses `gnet` (event-loop networking) + CBOR message encoding with a custom binary protocol (magic bytes `0xA8 0xD5`).
 - `message/` package is the shared protocol library (message types, encode/decode). Not specific to either variant.
 - `logger/` wraps `zerolog` into a `slog.Logger` via `zerolog.NewSlogHandler`.
-- `cmd/progressbar/` provides a real-time progress display using `go-humanize`.
+- `progressbar/` provides a real-time progress display using `go-humanize`.
 
 ## Important quirks
 
-- `make gcp` strips debug info (`-ldflags="-s -w"`); use `go build` directly from `cmd/gcp` for debugging.
+- `make gcp` strips debug info (`-ldflags="-s -w"`); use `go build .` for debugging.
 - Asyncio server never closes `CreateRes`/`WriteRes` connections on client response — it keeps the conn open.
 - The asyncio variant supports `--from` for download: `./bin/gcp cp --from /remote/path ./local_dst`
 

@@ -105,10 +105,10 @@ Without these two bounds a malicious or corrupted header could set `msgSize = 0x
 
 ## Architecture
 
-- `cmd/gcp/` — primary CLI entrypoint and copy logic
+- `.` (project root) — primary CLI entrypoint and copy logic (`package main`)
 - `message/` — shared protocol library (message types, CBOR encode/decode, wire format)
 - `logger/` — zerolog wrapped as `slog.Logger`
-- `cmd/progressbar/` — real-time progress display using `go-humanize`
+- `progressbar/` — real-time progress display using `go-humanize`
 ### Message types
 
 The custom TCP protocol uses a binary header with magic bytes (`0xA8 0xD5`), message type, and CBOR-encoded payloads:
