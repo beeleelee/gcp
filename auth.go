@@ -312,31 +312,6 @@ func findUserByPubKey(targetKey ssh.PublicKey, hintUser string) (string, string,
 	return "", "", fmt.Errorf("no matching user found for the provided SSH key")
 }
 
-// jailPath resolves reqPath relative to userHome and ensures the result
-// stays within the home directory. It follows symlinks and checks the
-// final resolved path against the home prefix.
-func jailPath(userHome, reqPath string) (string, error) {
-	cleanHome := filepath.Clean(userHome)
-	jailed := filepath.Clean(filepath.Join(cleanHome, reqPath))
-
-	// Quick prefix check before resolving symlinks.
-	if !strings.HasPrefix(jailed, cleanHome+string(filepath.Separator)) && jailed != cleanHome {
-		return "", fmt.Errorf("path %q escapes sandbox", reqPath)
-	}
-
-	// Resolve symlinks for the final check.
-	real, err := filepath.EvalSymlinks(jailed)
-	if err != nil {
-		// Path doesn't exist yet (e.g. CreateReq) — use the cleaned path.
-		real = jailed
-	}
-	if !strings.HasPrefix(real, cleanHome+string(filepath.Separator)) && real != cleanHome {
-		return "", fmt.Errorf("symlink in path %q escapes sandbox", reqPath)
-	}
-
-	return jailed, nil
-}
-
 // hashPubKey returns a hex SHA-256 of a marshalled public key for use as
 // a lookup key when we need to track in-flight challenges per pubkey.
 func hashPubKey(pubKeyBytes []byte) string {

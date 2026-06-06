@@ -417,13 +417,16 @@ func (c *copierServer) handleAuth(conn gnet.Conn, req *message.AuthReq) {
 	}, nil)
 }
 
-// sandboxPath resolves a client-provided path relative to the authenticated
-// user's home directory and returns the sandboxed absolute path.
+// sandboxPath resolves a client-provided path. Absolute paths are used as-is;
+// relative paths are resolved relative to the user's home directory (like scp).
 func sandboxPath(ca *connAuth, reqPath string) (string, error) {
 	if ca == nil {
 		return "", fmt.Errorf("not authenticated")
 	}
-	return jailPath(ca.home, reqPath)
+	if filepath.IsAbs(reqPath) {
+		return filepath.Clean(reqPath), nil
+	}
+	return filepath.Join(ca.home, reqPath), nil
 }
 
 // create handles a CreateReq from the client.
